@@ -3,10 +3,12 @@
 An extension that lets you browse, filter, preview, and download CivitAI models directly from the UI.
 
 ## Installation
-- Ensure Python and Stable Diffusion WebUI are set up.
-- Place this folder in your WebUI extensions directory (e.g., <webui-root>/extensions/civitai-browser).
-- Dependencies: `requests` (installed automatically via `install.py` if missing).
-- Recommended: get your CivitAI API key from your profile settings on civitai.com and save it immediately in the Settings tab.
+1. Ensure Python and Stable Diffusion WebUI are set up.
+2. Go to the "Extensions" tab in your WebUI interface.
+3. Select **Install from URL**.
+4. Paste the URL of the repository into the provided field and click "Install".
+5. Click on "Apply and restart UI".
+6. Recommended: get your CivitAI API key from your profile settings on [civitai.com](https://civitai.com) and save it immediately in the Settings tab.
 
 ## Features
 - Search and filter by Type, Sort, Period, Content Levels, and Creator
@@ -18,18 +20,18 @@ An extension that lets you browse, filter, preview, and download CivitAI models 
 - Manage Favorite Creators in Settings
 
 ## How to Use
-- Load a specific model URL:
+- **Load a specific model URL**:
   - Paste a CivitAI model or version URL and click “Load from URL”.
   - The details pane shows specifications; choose a version if available and click “Download model”.
-- Browse, then refine:
+- **Browse, then refine**:
   - Set filters (Type, Sort, Period, Content Levels, Creator) and click “Load models” to fetch results.
   - Browse the gallery; use the Version dropdown for different versions.
   - Enter a keyword and click “Refine results” to filter the loaded results locally.
-- Recommendation:
+- **Recommendation**:
   - Load all available pages first (use “Next” until no more pages are available) before refining with a keyword. This helps surface older models in the results.
 
 ## Compatibility
-- Tested environment:
+- **Tested environment**:
   - WebUI version: neo
   - Python: 3.13.12
   - PyTorch: 2.10.0+cu130
