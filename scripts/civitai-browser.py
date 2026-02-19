@@ -6,6 +6,9 @@ import os
 import json
 import re
 import threading
+import time
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 
 import modules.scripts as scripts  # noqa: F401 (kept for SD WebUI extension conventions)
 from modules import shared, script_callbacks
@@ -48,6 +51,32 @@ TYPE_COLORS = {
 
 # Cancellation flag for current download
 DOWNLOAD_CANCEL_REQUESTED = False
+_LAST_REQ_TS = 0.0
+_RATE_MIN_INTERVAL = 0.5
+_TAG_CACHE = {}
+_SESSION = requests.Session()
+_RETRY = Retry(total=2, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504], allowed_methods=frozenset(["GET"]))
+_SESSION.mount("https://", HTTPAdapter(max_retries=_RETRY))
+_SESSION.mount("http://", HTTPAdapter(max_retries=_RETRY))
+
+def _safe_get(url, headers=None, params=None, timeout=15, stream=False):
+    global _LAST_REQ_TS
+    now = time.time()
+    wait = _RATE_MIN_INTERVAL - (now - _LAST_REQ_TS)
+    if wait > 0:
+        time.sleep(wait)
+    _LAST_REQ_TS = time.time()
+    r = _SESSION.get(url, headers=headers or {}, params=params, timeout=timeout, stream=stream)
+    if r.status_code == 429:
+        ra = r.headers.get("Retry-After")
+        try:
+            delay = float(ra)
+        except Exception:
+            delay = 2.0
+        time.sleep(min(delay, 5.0))
+        r = _SESSION.get(url, headers=headers or {}, params=params, timeout=timeout, stream=stream)
+    r.raise_for_status()
+    return r
 
 # =============================================================================
 # SETTINGS
@@ -104,12 +133,7 @@ def fetch_model_by_id(model_id: str, api_key: str):
     if api_key.strip():
         headers["Authorization"] = f"Bearer {api_key.strip()}"
     try:
-        r = requests.get(
-            f"{CIVITAI_API}/models/{model_id}",
-            headers=headers,
-            timeout=15,
-        )
-        r.raise_for_status()
+        r = _safe_get(f"{CIVITAI_API}/models/{model_id}", headers=headers, timeout=15)
         return r.json(), None
     except requests.exceptions.HTTPError as e:
         return None, f"HTTP {e.response.status_code}: {e.response.text[:200]}"
@@ -121,20 +145,19 @@ def fetch_model_by_id(model_id: str, api_key: str):
 # CIVITAI API HELPERS
 # =============================================================================
 def resolve_tag(query, headers):
+    q = (query or "").strip()
+    if q in _TAG_CACHE:
+        return _TAG_CACHE[q]
     try:
-        r = requests.get(
-            f"{CIVITAI_API}/tags",
-            params={"query": query, "limit": 5},
-            headers=headers,
-            timeout=10,
-        )
-        r.raise_for_status()
+        r = _safe_get(f"{CIVITAI_API}/tags", headers=headers, params={"query": q, "limit": 5}, timeout=10)
         items = r.json().get("items", [])
         if items:
-            return max(items, key=lambda x: x.get("modelCount", 0)).get("name", query)
+            name = max(items, key=lambda x: x.get("modelCount", 0)).get("name", q)
+            _TAG_CACHE[q] = name
+            return name
     except Exception:
         pass
-    return query
+    return q
 
 
 def _get_headers(api_key):
@@ -143,8 +166,7 @@ def _get_headers(api_key):
 
 def _fetch_url(url, headers):
     try:
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
+        r = _safe_get(url, headers=headers, timeout=15)
         data = r.json()
         meta = data.get("metadata", {})
         return data.get("items", []), meta, meta.get("nextPage", "")
@@ -239,13 +261,7 @@ def search_first_page(query, model_type, sort, content_levels, api_key, creator_
 def search_creator_on_civitai(query, api_key):
     headers = _get_headers(api_key)
     try:
-        r = requests.get(
-            f"{CIVITAI_API}/creators",
-            params={"query": query, "limit": 10},
-            headers=headers,
-            timeout=10,
-        )
-        r.raise_for_status()
+        r = _safe_get(f"{CIVITAI_API}/creators", headers=headers, params={"query": query, "limit": 10}, timeout=10)
         return [i.get("username", "") for i in r.json().get("items", []) if i.get("username")]
     except Exception:
         return []
@@ -603,8 +619,7 @@ def download_model(search_data, version_choice, api_key):
 
     try:
         DOWNLOAD_CANCEL_REQUESTED = False
-        with requests.get(dl_url, headers=headers, stream=True, timeout=60) as r:
-            r.raise_for_status()
+        with _safe_get(dl_url, headers=headers, stream=True, timeout=60) as r:
             total = int(r.headers.get("Content-Length", 0))
             done = 0
             yield _render_progress_html(0, 0, total, filename), f"Starting download: {filename}"
@@ -647,8 +662,7 @@ def download_model(search_data, version_choice, api_key):
                     img_name = f"{os.path.splitext(filename)[0]}{img_ext}"
                     img_dest = os.path.join(save_dir, img_name)
                     if not os.path.exists(img_dest):
-                        with requests.get(img_url, headers=headers, stream=True, timeout=30) as ir:
-                            ir.raise_for_status()
+                        with _safe_get(img_url, headers=headers, stream=True, timeout=30) as ir:
                             with open(img_dest, "wb") as outf:
                                 for chunk in ir.iter_content(chunk_size=1 << 20):
                                     if chunk:
