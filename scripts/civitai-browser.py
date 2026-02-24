@@ -321,6 +321,24 @@ def build_gallery_data(items):
     return gallery
 
 
+def _pick_version_preview_image_url(version: dict):
+    if not version:
+        return ""
+    skip_types = {"video"}
+    skip_ext = {".mp4", ".webm", ".gif", ".mov", ".avi"}
+    for img in version.get("images", []) or []:
+        if img.get("type", "image").lower() in skip_types:
+            continue
+        url = (img.get("url", "") or "").strip()
+        if not url:
+            continue
+        ext = os.path.splitext(url.split("?")[0])[1].lower()
+        if ext in skip_ext:
+            continue
+        return url
+    return ""
+
+
 # =============================================================================
 # HTML BUILDERS
 # =============================================================================
@@ -420,6 +438,15 @@ def get_model_detail_html(model, version=None):
         rawdesc = version.get("description") or ""
     safedesc = sanitize_description_html(rawdesc)
 
+    preview_url = _pick_version_preview_image_url(version or {})
+    preview_html = ""
+    if preview_url:
+        preview_html = (
+            "<div style='margin:0 0 10px'>"
+            f"<img src='{preview_url}' style='width:100%;max-height:260px;object-fit:cover;border-radius:10px;border:1px solid #1f2937'/>"
+            "</div>"
+        )
+
     desc_html = (
         "<details style='margin-top:10px'>"
         "<summary style='cursor:pointer;padding:8px 12px;background:#1e2a1e;border-radius:6px;"
@@ -497,17 +524,6 @@ def get_model_detail_html(model, version=None):
             for t in tags
         ) + "</div>"
 
-    ver_badge = ""
-    if vername != "?":
-        datebit = f"<span style='color:#4b5563;font-size:10px;margin-left:6px'>{verdate}</span>" if verdate else ""
-        ver_badge = (
-            "<div style='margin-top:8px;padding:6px 10px;background:#1c1c2e;border-radius:6px;border-left:3px solid #6366f1;font-size:12px'>"
-            "<span style='color:#818cf8;font-size:10px;text-transform:uppercase;letter-spacing:0.5px'>Selected version</span><br>"
-            f"<span style='color:#e0e7ff;font-weight:600'>{vername}</span> "
-            f"<span style='color:#6b7280;font-size:11px'>(base: {verbasemodel})</span>"
-            f"{datebit}</div>"
-        )
-
     stars = ""
     if ratingcnt > 0:
         stars = (
@@ -519,6 +535,7 @@ def get_model_detail_html(model, version=None):
     return (
         "<div style='padding:12px 14px;font-family:sans-serif;color:#e0e0e0'>"
         "<div style='margin-bottom:10px'>"
+        f"{preview_html}"
         "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px'>"
         f"<h3 style='margin:0;color:#fff;font-size:16px;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{model.get('name','NA')}</h3>"
         f"<span style='background:{typecolor};color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0'>{modeltype}</span>"
@@ -529,7 +546,6 @@ def get_model_detail_html(model, version=None):
         f"{stars}"
         "</div>"
         f"{tags_html}"
-        f"{ver_badge}"
         f"{about_html}"
         f"{notes_html}"
         f"{desc_html}"
@@ -898,7 +914,7 @@ def make_panel_components(i, api_key_state):
                     build_trigger_words_html([]),
                     "",
                     "",
-                    gr.update(visible=False, choices=[], value=None),
+                    gr.update(visible=False, interactive=False, choices=[], value=None),
                     sd,
                 )
 
@@ -919,7 +935,7 @@ def make_panel_components(i, api_key_state):
                 build_trigger_words_html(get_trigger_words_for_version(sel_version)),
                 build_open_link_html(model),
                 sel_url,
-                gr.update(choices=choices, value=val, visible=len(choices) > 1),
+                gr.update(choices=choices, value=val, visible=True, interactive=len(choices) > 1),
                 sd2,
             )
 
@@ -965,11 +981,11 @@ def make_panel_components(i, api_key_state):
 
             model_id, version_id = parse_civitai_url(url)
             if not model_id:
-                return [], gr.update(value="URL not recognized.", visible=True), gr.update(visible=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
+                return [], gr.update(value="URL not recognized.", visible=True), gr.update(visible=False, interactive=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
 
             model, err = fetch_model_by_id(model_id, api_key)
             if err or not model:
-                return [], gr.update(value=(err or "Not found."), visible=True), gr.update(visible=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
+                return [], gr.update(value=(err or "Not found."), visible=True), gr.update(visible=False, interactive=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
 
             versions = model.get("modelVersions", []) or []
             ver_choices = [_version_label(v) for v in versions]
@@ -1001,7 +1017,7 @@ def make_panel_components(i, api_key_state):
             return (
                 build_gallery_data([model]),
                 gr.update(value=f"Loaded: {model.get('name','?')}", visible=True),
-                gr.update(choices=ver_choices, value=ver_val, visible=len(ver_choices) > 1),
+                gr.update(choices=ver_choices, value=ver_val, visible=True, interactive=len(ver_choices) > 1),
                 get_model_detail_html(model, selected_ver),
                 build_trigger_words_html(get_trigger_words_for_version(selected_ver)),
                 build_open_link_html(model),
