@@ -684,7 +684,7 @@ def _download_job_snapshot(panel_id):
 def poll_download(panel_id):
     job = _download_job_snapshot(panel_id)
     if not job:
-        return "", ""
+        return gr.update(), gr.update()
 
     filename = job.get("filename") or ""
     if filename:
@@ -692,7 +692,19 @@ def poll_download(panel_id):
     else:
         progress_html = ""
 
-    return progress_html, job.get("status", "")
+    status = job.get("status", "")
+    key = _download_job_key(panel_id)
+    with _DOWNLOAD_JOBS_LOCK:
+        live = _DOWNLOAD_JOBS.get(key) or {}
+        last_progress = live.get("ui_last_progress", None)
+        last_status = live.get("ui_last_status", None)
+        if last_progress == progress_html and last_status == status:
+            return gr.update(), gr.update()
+        live["ui_last_progress"] = progress_html
+        live["ui_last_status"] = status
+        _DOWNLOAD_JOBS[key] = live
+
+    return gr.update(value=progress_html), gr.update(value=status)
 
 
 def _update_download_job(panel_id, **updates):
