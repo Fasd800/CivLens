@@ -913,14 +913,29 @@ def make_panel_components(i, api_key_state):
             model = items[evt.index]
             versions = model.get("modelVersions", []) or []
             choices = [_version_label(v) for v in versions]
-            sel_version = versions[0] if versions else None
-            val = choices[0] if choices else None
+            sel_id = model.get("_civitai_selected_version_id", None)
+            sel_version = None
+            if sel_id is not None:
+                for v in versions:
+                    if str(v.get("id")) == str(sel_id):
+                        sel_version = v
+                        break
+            if sel_version is None and versions:
+                sel_version = versions[0]
+            val = _version_label(sel_version) if sel_version else (choices[0] if choices else None)
             mid = model.get("id", "")
             vid = (sel_version or {}).get("id")
             sel_url = (f"https://civitai.com/models/{mid}" if mid else "") + (f"?modelVersionId={vid}" if mid and vid else "")
 
             sd2 = dict(sd)
             sd2["selected_index"] = int(evt.index)
+            if vid is not None:
+                items2 = list(items)
+                m2 = dict(model)
+                m2["_civitai_selected_version_id"] = vid
+                items2[evt.index] = m2
+                sd2["items"] = items2
+                model = m2
 
             return (
                 get_model_detail_html(model, sel_version),
