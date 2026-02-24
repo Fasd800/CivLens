@@ -36,6 +36,7 @@ MODEL_DIRS = {
     "Wildcards": "models/Wildcards",
     "Other": "models/other",
 }
+_MODEL_DIRS_NORM = {k.strip().lower(): v for k, v in MODEL_DIRS.items()}
 
 TYPE_COLORS = {
     "LORA": "#7c3aed",
@@ -111,7 +112,9 @@ def creator_dropdown_choices():
 
 def get_model_dir(model_type):
     base = getattr(shared, "data_path", ".")
-    return os.path.join(base, MODEL_DIRS.get(model_type, "models/other"))
+    key = (model_type or "Other").strip().lower()
+    rel = _MODEL_DIRS_NORM.get(key, _MODEL_DIRS_NORM.get("other", "models/other"))
+    return os.path.join(base, rel)
 
 
 # =============================================================================
@@ -379,6 +382,14 @@ def sanitize_description_html(raw: str) -> str:
     return safe.strip()
 
 
+def _has_meaningful_html(html: str) -> bool:
+    if not html:
+        return False
+    txt = re.sub(r"<[^>]+>", "", html)
+    txt = txt.replace("&nbsp;", " ").replace("\u00a0", " ")
+    return bool(txt.strip())
+
+
 def build_open_link_html(model):
     mid = model.get("id", "")
     if not mid:
@@ -433,6 +444,42 @@ def get_model_detail_html(model, version=None):
         f"<div class='civitai-desc'>{safedesc or '<i style=\"color:#6b7280\">No description available.</i>'}</div>"
         "</div></details>"
     )
+    about_html = ""
+    ver_desc = sanitize_description_html((version or {}).get("description") or "")
+    if _has_meaningful_html(ver_desc):
+        about_html = (
+            "<details style='margin-top:10px'>"
+            "<summary style='cursor:pointer;padding:8px 12px;background:#1b2332;border-radius:6px;"
+            "border-left:3px solid #60a5fa;color:#60a5fa;font-size:12px;font-weight:700;"
+            "list-style:none;user-select:none'>About this version</summary>"
+            "<div style='padding:10px 12px;background:#121926;border-radius:0 0 6px 6px;"
+            "color:#d1d5db;font-size:12px;line-height:1.8;border:1px solid #233046;border-top:none;"
+            "max-height:260px;overflow-y:auto;word-break:break-word'>"
+            f"<div class='civitai-desc'>{ver_desc}</div>"
+            "</div></details>"
+        )
+
+    notes_html = ""
+    ver_notes_raw = ""
+    if version:
+        for k in ["changelog", "changeNotes", "versionNotes", "notes", "changes", "about", "updateNotes"]:
+            v = version.get(k)
+            if isinstance(v, str) and v.strip():
+                ver_notes_raw = v
+                break
+    ver_notes = sanitize_description_html(ver_notes_raw)
+    if _has_meaningful_html(ver_notes):
+        notes_html = (
+            "<details style='margin-top:10px'>"
+            "<summary style='cursor:pointer;padding:8px 12px;background:#2a2209;border-radius:6px;"
+            "border-left:3px solid #fbbf24;color:#fbbf24;font-size:12px;font-weight:700;"
+            "list-style:none;user-select:none'>Version changes or notes</summary>"
+            "<div style='padding:10px 12px;background:#1a1407;border-radius:0 0 6px 6px;"
+            "color:#d1d5db;font-size:12px;line-height:1.8;border:1px solid #3a2b10;border-top:none;"
+            "max-height:260px;overflow-y:auto;word-break:break-word'>"
+            f"<div class='civitai-desc'>{ver_notes}</div>"
+            "</div></details>"
+        )
 
     stats = model.get("stats", {}) or {}
     downloads = stats.get("downloadCount", 0)
@@ -484,6 +531,8 @@ def get_model_detail_html(model, version=None):
         "</div>"
         f"{tags_html}"
         f"{ver_badge}"
+        f"{about_html}"
+        f"{notes_html}"
         f"{desc_html}"
         "</div></div>"
     )
@@ -593,6 +642,34 @@ def _render_progress_html(percent, done, total, filename):
     )
 
 
+def _cancel_sleep(seconds, cancel_event):
+    if not seconds:
+        return
+    end = time.time() + float(seconds)
+    while time.time() < end:
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("Cancelled")
+        time.sleep(min(0.2, end - time.time()))
+
+
+def _download_get(url, headers, cancel_event, stream=False, timeout=(10, 5)):
+    if cancel_event and cancel_event.is_set():
+        raise RuntimeError("Cancelled")
+    r = requests.get(url, headers=headers or {}, timeout=timeout, stream=stream)
+    if r.status_code == 429:
+        ra = r.headers.get("Retry-After")
+        try:
+            delay = float(ra)
+        except Exception:
+            delay = 2.0
+        _cancel_sleep(min(delay, 5.0), cancel_event)
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("Cancelled")
+        r = requests.get(url, headers=headers or {}, timeout=timeout, stream=stream)
+    r.raise_for_status()
+    return r
+
+
 def _download_job_key(panel_id):
     return str(panel_id)
 
@@ -669,7 +746,7 @@ def _download_worker(panel_id, model, version, version_choice, api_key):
 
     try:
         _update_download_job(panel_id, filename=filename, status=f"Starting download: {filename}")
-        with _safe_get(dl_url, headers=headers, stream=True, timeout=60) as r:
+        with _download_get(dl_url, headers=headers, cancel_event=cancel_event, stream=True, timeout=(10, 5)) as r:
             total = int(r.headers.get("Content-Length", 0))
             done = 0
             _update_download_job(panel_id, total=total, done=0, percent=0)
@@ -706,7 +783,7 @@ def _download_worker(panel_id, model, version, version_choice, api_key):
         total_mb = total / 1024 / 1024 if total else 0
         msg = (f"Downloaded: {filename} ({size_mb:.1f}/{total_mb:.1f} MB) to {save_dir}" if total_mb > 0 else f"Downloaded: {filename} ({size_mb:.1f} MB) to {save_dir}")
 
-        if model_type.upper() == "LORA":
+        if (model_type or "").strip().lower() == "lora":
             img_url = _pick_first_image_url(version)
             if img_url:
                 try:
@@ -716,9 +793,11 @@ def _download_worker(panel_id, model, version, version_choice, api_key):
                     img_name = f"{os.path.splitext(filename)[0]}{img_ext}"
                     img_dest = os.path.join(save_dir, img_name)
                     if not os.path.exists(img_dest):
-                        with _safe_get(img_url, headers=headers, stream=True, timeout=30) as ir:
+                        with _download_get(img_url, headers=headers, cancel_event=cancel_event, stream=True, timeout=(10, 5)) as ir:
                             with open(img_dest, "wb") as outf:
                                 for chunk in ir.iter_content(chunk_size=1 << 20):
+                                    if cancel_event and cancel_event.is_set():
+                                        raise RuntimeError("Cancelled")
                                     if chunk:
                                         outf.write(chunk)
                         msg += f"\nPreview saved: {img_name}"
@@ -736,7 +815,10 @@ def _download_worker(panel_id, model, version, version_choice, api_key):
                 os.remove(dest)
         except Exception:
             pass
-        _update_download_job(panel_id, status=f"Download failed: {e}", finished=True)
+        if str(e) == "Cancelled":
+            _update_download_job(panel_id, status="Download cancelled.", finished=True)
+        else:
+            _update_download_job(panel_id, status=f"Download failed: {e}", finished=True)
         return
 
 
