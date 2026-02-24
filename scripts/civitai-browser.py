@@ -186,6 +186,66 @@ def _matches_query(model, q: str) -> bool:
     )
 
 
+def _parse_tag_list(s: str):
+    raw = (s or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"[,\n]+", raw)
+    out = []
+    for p in parts:
+        t = (p or "").strip()
+        if t:
+            out.append(t)
+    seen = set()
+    dedup = []
+    for t in out:
+        k = t.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        dedup.append(t)
+    return dedup
+
+
+def _model_matches_tags(model, required_tags):
+    if not required_tags:
+        return True
+    tags = [t.lower() for t in (model.get("tags") or [])]
+    tagset = set(tags)
+    for t in required_tags:
+        if (t or "").lower() not in tagset:
+            return False
+    return True
+
+
+def _model_matches_base_model(model, base_model_value: str):
+    bm = (base_model_value or "").strip()
+    if not bm or bm == "Any":
+        return True
+    want = bm.lower()
+    for v in model.get("modelVersions", []) or []:
+        got = (v.get("baseModel") or "").lower()
+        if want in got:
+            return True
+    return False
+
+
+def _apply_extra_filters(items, tag_categories, tag_filter_text, base_model_value):
+    required = []
+    required.extend(_parse_tag_list(tag_filter_text))
+    required.extend(tag_categories or [])
+    if not required and (not base_model_value or base_model_value == "Any"):
+        return list(items or [])
+    out = []
+    for m in items or []:
+        if not _model_matches_base_model(m, base_model_value):
+            continue
+        if not _model_matches_tags(m, required):
+            continue
+        out.append(m)
+    return out
+
+
 def build_search_url(query, model_type, sort, content_levels, api_key, creator_filter, period="AllTime", use_tag=False):
     include_nsfw = any(lvl in content_levels for lvl in ["PG-13", "R", "X", "XXX"])
     params = {
@@ -1066,6 +1126,26 @@ def make_panel_components(i, api_key_state):
                 )
                 search_btn = gr.Button("🔍 Load models", variant="primary", scale=4, min_width=220, elem_classes=["btn-load"])
 
+            with gr.Row():
+                base_model = gr.Dropdown(
+                    label="Base model",
+                    choices=["Any", "Pony", "Illustrious", "SDXL", "SD 1.5", "SD 2.1", "Flux", "Other"],
+                    value="Any",
+                    scale=2,
+                )
+                tag_categories = gr.CheckboxGroup(
+                    label="Tag categories",
+                    choices=["character", "background", "clothing", "style", "concept", "artist"],
+                    value=[],
+                    scale=3,
+                )
+                tag_filter = gr.Textbox(
+                    label="Tags",
+                    placeholder="Comma separated tags (e.g. character, clothing, cyberpunk)",
+                    lines=1,
+                    scale=5,
+                )
+
         with gr.Group():
             gr.Markdown("Load Models and Keyword Filter")
             with gr.Row():
@@ -1143,6 +1223,9 @@ def make_panel_components(i, api_key_state):
                 "next_page": "",
                 "first_page": "",
                 "query": "",
+                "tag_categories": [],
+                "tag_filter": "",
+                "base_model": "Any",
                 "selected_index": 0,
             }
         )
@@ -1305,7 +1388,7 @@ def make_panel_components(i, api_key_state):
             outputs=[gallery, url_status, version_selector, model_header_html, trigger_html, model_body_html, selected_url, search_data],
         )
 
-        def do_search(q, mt, srt, levels, api_key, creator, per, sd):
+        def do_search(q, mt, srt, levels, api_key, creator, per, cats, tag_text, bm, sd):
             items, meta, next_page, first_page = search_first_page(q, mt, srt, levels, api_key, creator, per)
             visible_items = [m for m in items if _has_thumbnail(m)]
             creator_active = creator and creator != "— All —"
@@ -1329,28 +1412,34 @@ def make_panel_components(i, api_key_state):
                     if pages >= 50 or len(all_loaded) >= 5000:
                         break
 
+            filtered_visible = _apply_extra_filters(visible_items, cats, tag_text, bm)
+            filtered_all = _apply_extra_filters(all_loaded, cats, tag_text, bm)
+
             if creator_active:
-                total = meta.get("totalItems", len(all_loaded))
-                page_lbl = f"Loaded {len(all_loaded)} of {total} results" if all_loaded else "No results found."
+                total = meta.get("totalItems", len(filtered_all))
+                page_lbl = f"Loaded {len(filtered_all)} of {total} results" if filtered_all else "No results found."
             else:
-                total = meta.get("totalItems", len(visible_items))
-                page_lbl = f"Page 1: {len(visible_items)} of {total} results" if visible_items else "No results found."
+                total = meta.get("totalItems", len(filtered_visible))
+                page_lbl = f"Page 1: {len(filtered_visible)} of {total} results" if filtered_visible else "No results found."
 
             new_sd = dict(sd)
             new_sd.update(
                 {
-                    "items": (all_loaded if creator_active else visible_items),
+                    "items": (filtered_all if creator_active else filtered_visible),
                     "metadata": meta,
-                    "all_items": (all_loaded if creator_active else visible_items),
+                    "all_items": (filtered_all if creator_active else filtered_visible),
                     "next_page": ("" if creator_active else next_page),
                     "first_page": first_page,
                     "query": q,
+                    "tag_categories": (cats or []),
+                    "tag_filter": (tag_text or ""),
+                    "base_model": (bm or "Any"),
                     "selected_index": 0,
                 }
             )
 
             return (
-                build_gallery_data(all_loaded if creator_active else visible_items),
+                build_gallery_data(filtered_all if creator_active else filtered_visible),
                 gr.update(value=page_lbl, visible=True),
                 "",
                 gr.update(visible=False, interactive=False, choices=[], value=None),
@@ -1362,12 +1451,12 @@ def make_panel_components(i, api_key_state):
 
         search_btn.click(
             fn=do_search,
-            inputs=[query, model_type, sort, content_levels, api_key_state, creator_filter, period, search_data],
+            inputs=[query, model_type, sort, content_levels, api_key_state, creator_filter, period, tag_categories, tag_filter, base_model, search_data],
             outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
         query.submit(
             fn=do_search,
-            inputs=[query, model_type, sort, content_levels, api_key_state, creator_filter, period, search_data],
+            inputs=[query, model_type, sort, content_levels, api_key_state, creator_filter, period, tag_categories, tag_filter, base_model, search_data],
             outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
 
@@ -1379,6 +1468,7 @@ def make_panel_components(i, api_key_state):
             headers = _get_headers(api_key)
             items, meta, next2 = _fetch_url(next_url, headers)
             visible_items = [m for m in items if _has_thumbnail(m)]
+            visible_items = _apply_extra_filters(visible_items, sd.get("tag_categories"), sd.get("tag_filter"), sd.get("base_model"))
             all_items = (sd.get("all_items") or []) + visible_items
             total = meta.get("totalItems", 0)
             page_lbl = f"{len(all_items)} of {total} loaded" if total else f"{len(all_items)} loaded"
@@ -1401,6 +1491,7 @@ def make_panel_components(i, api_key_state):
             headers = _get_headers(api_key)
             items, meta, next2 = _fetch_url(first_url, headers)
             visible_items = [m for m in items if _has_thumbnail(m)]
+            visible_items = _apply_extra_filters(visible_items, sd.get("tag_categories"), sd.get("tag_filter"), sd.get("base_model"))
             total = meta.get("totalItems", len(visible_items))
             page_lbl = f"Page 1: {len(visible_items)} of {total} results" if visible_items else "No results."
 
@@ -1428,6 +1519,7 @@ def make_panel_components(i, api_key_state):
             else:
                 qq = q.strip().lower()
                 matched = [m for m in all_items if _matches_query(m, qq)]
+            matched = _apply_extra_filters(matched, sd.get("tag_categories"), sd.get("tag_filter"), sd.get("base_model"))
 
             sd2 = dict(sd)
             sd2["items"] = matched
