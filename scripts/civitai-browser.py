@@ -216,11 +216,6 @@ def search_first_page(query, model_type, sort, content_levels, api_key, creator_
     if creator_active:
         url = build_search_url(query, model_type, sort, content_levels, api_key, creator_filter, period)
         items, meta, next_page = _fetch_url(url, headers)
-        if query.strip():
-            q = query.strip().lower()
-            items = [m for m in items if _matches_query(m, q)]
-            meta = {"totalItems": len(items)}
-            next_page = ""
         return items, meta, next_page, url
 
     if query.strip():
@@ -1055,16 +1050,41 @@ def make_panel_components(i, api_key_state):
         def do_search(q, mt, srt, levels, api_key, creator, per, sd):
             items, meta, next_page, first_page = search_first_page(q, mt, srt, levels, api_key, creator, per)
             visible_items = [m for m in items if _has_thumbnail(m)]
-            total = meta.get("totalItems", len(visible_items))
-            page_lbl = f"Page 1: {len(visible_items)} of {total} results" if visible_items else "No results found."
+            creator_active = creator and creator != "— All —"
+            all_loaded = list(visible_items)
+            if creator_active and next_page:
+                headers = _get_headers(api_key)
+                seen = {m.get("id") for m in all_loaded if m.get("id") is not None}
+                pages = 1
+                while next_page:
+                    pages += 1
+                    items2, meta2, next2 = _fetch_url(next_page, headers)
+                    visible2 = [m for m in items2 if _has_thumbnail(m)]
+                    for m in visible2:
+                        mid = m.get("id")
+                        if mid is None or mid in seen:
+                            continue
+                        seen.add(mid)
+                        all_loaded.append(m)
+                    meta = meta2 or meta
+                    next_page = next2
+                    if pages >= 50 or len(all_loaded) >= 5000:
+                        break
+
+            if creator_active:
+                total = meta.get("totalItems", len(all_loaded))
+                page_lbl = f"Loaded {len(all_loaded)} of {total} results" if all_loaded else "No results found."
+            else:
+                total = meta.get("totalItems", len(visible_items))
+                page_lbl = f"Page 1: {len(visible_items)} of {total} results" if visible_items else "No results found."
 
             new_sd = dict(sd)
             new_sd.update(
                 {
-                    "items": visible_items,
+                    "items": (all_loaded if creator_active else visible_items),
                     "metadata": meta,
-                    "all_items": visible_items,
-                    "next_page": next_page,
+                    "all_items": (all_loaded if creator_active else visible_items),
+                    "next_page": ("" if creator_active else next_page),
                     "first_page": first_page,
                     "query": q,
                     "selected_index": 0,
@@ -1072,7 +1092,7 @@ def make_panel_components(i, api_key_state):
             )
 
             return (
-                build_gallery_data(visible_items),
+                build_gallery_data(all_loaded if creator_active else visible_items),
                 gr.update(value=page_lbl, visible=True),
                 EMPTY_DETAIL,
                 build_trigger_words_html([]),
