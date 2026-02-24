@@ -573,6 +573,7 @@ def render_tab_bar(count, active):
 
         tabs_html += (
             f"<div class='{tab_class}' "
+            f"data-tab-index='{i}' "
             f"title='Search {i+1}' "
             f"onclick=\"var el=document.getElementById('civitai-switch-btn-{i}');if(el) el.click();\" "
             f"onauxclick=\"if(event.button===1){{event.preventDefault();var el=document.getElementById('civitai-close-btn-{i}');if(el) el.click();}}\""
@@ -763,7 +764,7 @@ def make_panel_components(i, api_key_state):
                     elem_id=f"civitai-url-input-{i}",
                     scale=5,
                 )
-                url_btn = gr.Button("🔗 Load from URL", variant="secondary", scale=1, min_width=120)
+                url_btn = gr.Button("🔗 Load from URL", variant="secondary", scale=1, min_width=120, elem_id=f"civitai-url-btn-{i}")
 
             url_status = gr.Textbox(
                 label="",
@@ -857,12 +858,14 @@ def make_panel_components(i, api_key_state):
                 model_info = gr.HTML(EMPTY_DETAIL)
                 trigger_html = gr.HTML(build_trigger_words_html([]))
                 open_link_html = gr.HTML("")
+                selected_url = gr.Textbox(value="", visible=False, elem_id=f"civitai-selected-url-{i}")
 
                 gr.HTML('<hr style="border-color:#1f2937;margin:0">')
 
                 with gr.Row():
                     download_btn = gr.Button("⬇️ Download model", variant="primary", scale=3, min_width=220, elem_classes=["btn-download"])
                     stop_btn = gr.Button("⏹️ Stop download", variant="secondary", scale=1, min_width=140)
+                    send_tab_btn = gr.Button("📤 Send to new tab", variant="secondary", scale=1, min_width=170, elem_id=f"civitai-send-tab-{i}")
                 dl_progress_html = gr.HTML("")
 
                 dl_status = gr.Textbox(
@@ -890,13 +893,23 @@ def make_panel_components(i, api_key_state):
         def on_gallery_select(evt: gr.SelectData, sd):
             items = sd.get("items", [])
             if not items or evt.index is None or evt.index >= len(items):
-                return EMPTY_DETAIL, build_trigger_words_html([]), gr.update(visible=False), sd
+                return (
+                    EMPTY_DETAIL,
+                    build_trigger_words_html([]),
+                    "",
+                    "",
+                    gr.update(visible=False, choices=[], value=None),
+                    sd,
+                )
 
             model = items[evt.index]
             versions = model.get("modelVersions", []) or []
             choices = [_version_label(v) for v in versions]
             sel_version = versions[0] if versions else None
             val = choices[0] if choices else None
+            mid = model.get("id", "")
+            vid = (sel_version or {}).get("id")
+            sel_url = (f"https://civitai.com/models/{mid}" if mid else "") + (f"?modelVersionId={vid}" if mid and vid else "")
 
             sd2 = dict(sd)
             sd2["selected_index"] = int(evt.index)
@@ -905,6 +918,7 @@ def make_panel_components(i, api_key_state):
                 get_model_detail_html(model, sel_version),
                 build_trigger_words_html(get_trigger_words_for_version(sel_version)),
                 build_open_link_html(model),
+                sel_url,
                 gr.update(choices=choices, value=val, visible=len(choices) > 1),
                 sd2,
             )
@@ -912,26 +926,30 @@ def make_panel_components(i, api_key_state):
         gallery.select(
             fn=on_gallery_select,
             inputs=[search_data],
-            outputs=[model_info, trigger_html, open_link_html, version_selector, search_data],
+            outputs=[model_info, trigger_html, open_link_html, selected_url, version_selector, search_data],
         )
 
         def on_version_change(vc, sd):
             items = sd.get("items", [])
             idx = sd.get("selected_index", 0)
             if not items or idx >= len(items):
-                return EMPTY_DETAIL, build_trigger_words_html([])
+                return EMPTY_DETAIL, build_trigger_words_html([]), ""
 
             model = items[idx]
             v = get_version_by_choice(model, vc)
+            mid = model.get("id", "")
+            vid = (v or {}).get("id")
+            sel_url = (f"https://civitai.com/models/{mid}" if mid else "") + (f"?modelVersionId={vid}" if mid and vid else "")
             return (
                 get_model_detail_html(model, v),
                 build_trigger_words_html(get_trigger_words_for_version(v)),
+                sel_url,
             )
 
         version_selector.change(
             fn=on_version_change,
             inputs=[version_selector, search_data],
-            outputs=[model_info, trigger_html],
+            outputs=[model_info, trigger_html, selected_url],
         )
 
         def load_from_url(url, api_key):
@@ -947,11 +965,11 @@ def make_panel_components(i, api_key_state):
 
             model_id, version_id = parse_civitai_url(url)
             if not model_id:
-                return [], gr.update(value="URL not recognized.", visible=True), gr.update(visible=False), EMPTY_DETAIL, build_trigger_words_html([]), "", empty_sd
+                return [], gr.update(value="URL not recognized.", visible=True), gr.update(visible=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
 
             model, err = fetch_model_by_id(model_id, api_key)
             if err or not model:
-                return [], gr.update(value=(err or "Not found."), visible=True), gr.update(visible=False), EMPTY_DETAIL, build_trigger_words_html([]), "", empty_sd
+                return [], gr.update(value=(err or "Not found."), visible=True), gr.update(visible=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
 
             versions = model.get("modelVersions", []) or []
             ver_choices = [_version_label(v) for v in versions]
@@ -966,6 +984,9 @@ def make_panel_components(i, api_key_state):
                 selected_ver = versions[0]
 
             ver_val = _version_label(selected_ver) if selected_ver else (ver_choices[0] if ver_choices else None)
+            mid = model.get("id", "")
+            vid = (selected_ver or {}).get("id")
+            sel_url = (f"https://civitai.com/models/{mid}" if mid else "") + (f"?modelVersionId={vid}" if mid and vid else "")
 
             new_sd = {
                 "items": [model],
@@ -984,18 +1005,19 @@ def make_panel_components(i, api_key_state):
                 get_model_detail_html(model, selected_ver),
                 build_trigger_words_html(get_trigger_words_for_version(selected_ver)),
                 build_open_link_html(model),
+                sel_url,
                 new_sd,
             )
 
         url_btn.click(
             fn=load_from_url,
             inputs=[url_input, api_key_state],
-            outputs=[gallery, url_status, version_selector, model_info, trigger_html, open_link_html, search_data],
+            outputs=[gallery, url_status, version_selector, model_info, trigger_html, open_link_html, selected_url, search_data],
         )
         url_input.submit(
             fn=load_from_url,
             inputs=[url_input, api_key_state],
-            outputs=[gallery, url_status, version_selector, model_info, trigger_html, open_link_html, search_data],
+            outputs=[gallery, url_status, version_selector, model_info, trigger_html, open_link_html, selected_url, search_data],
         )
 
         def do_search(q, mt, srt, levels, api_key, creator, per, sd):
