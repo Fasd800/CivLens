@@ -416,11 +416,136 @@ def build_open_link_html(model, version=None):
         vid = version.get("id") or ""
     url = f"https://civitai.com/models/{mid}" + (f"?modelVersionId={vid}" if vid else "")
     return (
-        "<div style='margin:6px 0 10px'>"
         f"<a href='{url}' target='_blank' "
-        "style='display:inline-block;padding:4px 10px;background:#1e2d3d;border:1px solid #1d4ed8;"
-        "border-radius:12px;color:#60a5fa;font-size:12px;text-decoration:none;font-weight:600'>"
+        "style='display:inline-flex;align-items:center;padding:3px 10px;background:#1e2d3d;border:1px solid #1d4ed8;"
+        "border-radius:999px;color:#60a5fa;font-size:12px;text-decoration:none;font-weight:700;white-space:nowrap'>"
         "Open on CivitAI</a>"
+    )
+
+
+def get_model_header_html(model, version=None):
+    if not model:
+        return ""
+
+    if version is None and model.get("modelVersions"):
+        version = model["modelVersions"][0]
+
+    stats = model.get("stats", {}) or {}
+    downloads = stats.get("downloadCount", 0)
+    rating = float(stats.get("rating", 0) or 0)
+    ratingcnt = int(stats.get("ratingCount", 0) or 0)
+    creator = (model.get("creator") or {}).get("username", "NA")
+    modeltype = model.get("type", "Other")
+    typecolor = TYPE_COLORS.get(modeltype, "#374151")
+
+    stars = ""
+    if ratingcnt > 0:
+        stars = (
+            "<span style='background:#2a2209;border:1px solid #92400e;color:#fbbf24;"
+            "padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600'>"
+            f"{rating:.1f} ★ ({ratingcnt:,})</span>"
+        )
+
+    open_link = build_open_link_html(model, version)
+
+    return (
+        "<div style='padding:12px 14px;font-family:sans-serif;color:#e0e0e0'>"
+        "<div style='margin-bottom:10px'>"
+        "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px'>"
+        f"<h3 style='margin:0;color:#fff;font-size:16px;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{model.get('name','NA')}</h3>"
+        f"<span style='background:{typecolor};color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0'>{modeltype}</span>"
+        "</div>"
+        "<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap'>"
+        f"<span style='background:#1e2d3d;border:1px solid #1d4ed8;color:#60a5fa;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600'>{creator}</span>"
+        f"<span style='background:#1a2e1a;border:1px solid #166534;color:#34d399;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600'>{downloads:,} downloads</span>"
+        f"{stars}"
+        f"{open_link}"
+        "</div>"
+        "</div>"
+        "</div>"
+    )
+
+
+def get_model_body_html(model, version=None):
+    if not model:
+        return EMPTY_DETAIL
+
+    if version is None and model.get("modelVersions"):
+        version = model["modelVersions"][0]
+
+    rawdesc = model.get("description") or ""
+    if not rawdesc and version:
+        rawdesc = version.get("description") or ""
+    safedesc = sanitize_description_html(rawdesc)
+
+    desc_html = (
+        "<details style='margin-top:10px'>"
+        "<summary style='cursor:pointer;padding:8px 12px;background:#1e2a1e;border-radius:6px;"
+        "border-left:3px solid #4ade80;color:#4ade80;font-size:12px;font-weight:700;"
+        "list-style:none;user-select:none'>Model description</summary>"
+        "<div style='padding:10px 12px;background:#161f16;border-radius:0 0 6px 6px;"
+        "color:#d1d5db;font-size:12px;line-height:1.8;border:1px solid #2a3a2a;border-top:none;"
+        "max-height:340px;overflow-y:auto;word-break:break-word'>"
+        "<style scoped>"
+        ".civitai-desc h1,.civitai-desc h2,.civitai-desc h3{color:#e0e7ff;margin:10px 0 4px;font-size:13px;font-weight:700}"
+        ".civitai-desc p{margin:4px 0}"
+        ".civitai-desc ul,.civitai-desc ol{padding-left:18px;margin:4px 0}"
+        ".civitai-desc li{margin:2px 0}"
+        ".civitai-desc a{color:#60a5fa;text-decoration:underline}"
+        ".civitai-desc strong,.civitai-desc b{color:#fff}"
+        ".civitai-desc em,.civitai-desc i{color:#d1d5db}"
+        ".civitai-desc code{background:#0d1117;padding:1px 5px;border-radius:4px;font-family:monospace;color:#a78bfa}"
+        ".civitai-desc hr{border-color:#1f2937;margin:8px 0}"
+        ".civitai-desc img{max-width:100%;border-radius:6px;margin:4px 0}"
+        "</style>"
+        f"<div class='civitai-desc'>{safedesc or '<i style=\"color:#6b7280\">No description available.</i>'}</div>"
+        "</div></details>"
+    )
+
+    about_html = ""
+    ver_desc = sanitize_description_html((version or {}).get("description") or "")
+    if _has_meaningful_html(ver_desc):
+        about_html = (
+            "<details style='margin-top:10px'>"
+            "<summary style='cursor:pointer;padding:8px 12px;background:#1b2332;border-radius:6px;"
+            "border-left:3px solid #60a5fa;color:#60a5fa;font-size:12px;font-weight:700;"
+            "list-style:none;user-select:none'>About this version</summary>"
+            "<div style='padding:10px 12px;background:#121926;border-radius:0 0 6px 6px;"
+            "color:#d1d5db;font-size:12px;line-height:1.8;border:1px solid #233046;border-top:none;"
+            "max-height:260px;overflow-y:auto;word-break:break-word'>"
+            f"<div class='civitai-desc'>{ver_desc}</div>"
+            "</div></details>"
+        )
+
+    notes_html = ""
+    ver_notes_raw = ""
+    if version:
+        for k in ["changelog", "changeNotes", "versionNotes", "notes", "changes", "about", "updateNotes"]:
+            v = version.get(k)
+            if isinstance(v, str) and v.strip():
+                ver_notes_raw = v
+                break
+    ver_notes = sanitize_description_html(ver_notes_raw)
+    if _has_meaningful_html(ver_notes):
+        notes_html = (
+            "<details style='margin-top:10px'>"
+            "<summary style='cursor:pointer;padding:8px 12px;background:#2a2209;border-radius:6px;"
+            "border-left:3px solid #fbbf24;color:#fbbf24;font-size:12px;font-weight:700;"
+            "list-style:none;user-select:none'>Version changes or notes</summary>"
+            "<div style='padding:10px 12px;background:#1a1407;border-radius:0 0 6px 6px;"
+            "color:#d1d5db;font-size:12px;line-height:1.8;border:1px solid #3a2b10;border-top:none;"
+            "max-height:260px;overflow-y:auto;word-break:break-word'>"
+            f"<div class='civitai-desc'>{ver_notes}</div>"
+            "</div></details>"
+        )
+
+    return (
+        "<div style='padding:12px 14px;font-family:sans-serif;color:#e0e0e0'>"
+        "<div style='margin-bottom:10px'>"
+        f"{desc_html}"
+        f"{about_html}"
+        f"{notes_html}"
+        "</div>"
         "</div>"
     )
 
@@ -979,16 +1104,16 @@ def make_panel_components(i, api_key_state):
 
             with gr.Column(scale=3):
                 gr.Markdown("Model details")
+                model_header_html = gr.HTML("")
                 version_selector = gr.Dropdown(
-                    label="Version",
+                    label="Select the version",
                     choices=[],
                     value=None,
                     interactive=True,
                     visible=False,
                 )
-                model_info = gr.HTML(EMPTY_DETAIL)
                 trigger_html = gr.HTML(build_trigger_words_html([]))
-                open_link_html = gr.HTML("")
+                model_body_html = gr.HTML(EMPTY_DETAIL)
                 selected_url = gr.Textbox(value="", visible=False, elem_id=f"civitai-selected-url-{i}")
 
                 gr.HTML('<hr style="border-color:#1f2937;margin:0">')
@@ -1027,11 +1152,11 @@ def make_panel_components(i, api_key_state):
             items = sd.get("items", [])
             if not items or evt.index is None or evt.index >= len(items):
                 return (
-                    EMPTY_DETAIL,
-                    build_trigger_words_html([]),
-                    "",
                     "",
                     gr.update(visible=False, interactive=False, choices=[], value=None),
+                    build_trigger_words_html([]),
+                    EMPTY_DETAIL,
+                    "",
                     sd,
                 )
 
@@ -1063,25 +1188,25 @@ def make_panel_components(i, api_key_state):
                 model = m2
 
             return (
-                get_model_detail_html(model, sel_version),
-                build_trigger_words_html(get_trigger_words_for_version(sel_version)),
-                build_open_link_html(model, sel_version),
-                sel_url,
+                get_model_header_html(model, sel_version),
                 gr.update(choices=choices, value=val, visible=True, interactive=len(choices) > 1),
+                build_trigger_words_html(get_trigger_words_for_version(sel_version)),
+                get_model_body_html(model, sel_version),
+                sel_url,
                 sd2,
             )
 
         gallery.select(
             fn=on_gallery_select,
             inputs=[search_data],
-            outputs=[model_info, trigger_html, open_link_html, selected_url, version_selector, search_data],
+            outputs=[model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def on_version_change(vc, sd):
             items = sd.get("items", [])
             idx = sd.get("selected_index", 0)
             if not items or idx >= len(items):
-                return [], EMPTY_DETAIL, build_trigger_words_html([]), "", "", sd
+                return [], "", build_trigger_words_html([]), EMPTY_DETAIL, "", sd
 
             model = items[idx]
             v = get_version_by_choice(model, vc)
@@ -1097,9 +1222,9 @@ def make_panel_components(i, api_key_state):
 
             return (
                 build_gallery_data(items2),
-                get_model_detail_html(m2, v),
+                get_model_header_html(m2, v),
                 build_trigger_words_html(get_trigger_words_for_version(v)),
-                build_open_link_html(m2, v),
+                get_model_body_html(m2, v),
                 sel_url,
                 sd2,
             )
@@ -1107,7 +1232,7 @@ def make_panel_components(i, api_key_state):
         version_selector.change(
             fn=on_version_change,
             inputs=[version_selector, search_data],
-            outputs=[gallery, model_info, trigger_html, open_link_html, selected_url, search_data],
+            outputs=[gallery, model_header_html, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def load_from_url(url, api_key):
@@ -1123,11 +1248,11 @@ def make_panel_components(i, api_key_state):
 
             model_id, version_id = parse_civitai_url(url)
             if not model_id:
-                return [], gr.update(value="URL not recognized.", visible=True), gr.update(visible=False, interactive=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
+                return [], gr.update(value="URL not recognized.", visible=True), gr.update(visible=False, interactive=False), "", build_trigger_words_html([]), EMPTY_DETAIL, "", empty_sd
 
             model, err = fetch_model_by_id(model_id, api_key)
             if err or not model:
-                return [], gr.update(value=(err or "Not found."), visible=True), gr.update(visible=False, interactive=False), EMPTY_DETAIL, build_trigger_words_html([]), "", "", empty_sd
+                return [], gr.update(value=(err or "Not found."), visible=True), gr.update(visible=False, interactive=False), "", build_trigger_words_html([]), EMPTY_DETAIL, "", empty_sd
 
             versions = model.get("modelVersions", []) or []
             ver_choices = [_version_label(v) for v in versions]
@@ -1162,9 +1287,9 @@ def make_panel_components(i, api_key_state):
                 build_gallery_data([m2]),
                 gr.update(value=f"Loaded: {model.get('name','?')}", visible=True),
                 gr.update(choices=ver_choices, value=ver_val, visible=True, interactive=len(ver_choices) > 1),
-                get_model_detail_html(m2, selected_ver),
+                get_model_header_html(m2, selected_ver),
                 build_trigger_words_html(get_trigger_words_for_version(selected_ver)),
-                build_open_link_html(m2, selected_ver),
+                get_model_body_html(m2, selected_ver),
                 sel_url,
                 new_sd,
             )
@@ -1172,12 +1297,12 @@ def make_panel_components(i, api_key_state):
         url_btn.click(
             fn=load_from_url,
             inputs=[url_input, api_key_state],
-            outputs=[gallery, url_status, version_selector, model_info, trigger_html, open_link_html, selected_url, search_data],
+            outputs=[gallery, url_status, version_selector, model_header_html, trigger_html, model_body_html, selected_url, search_data],
         )
         url_input.submit(
             fn=load_from_url,
             inputs=[url_input, api_key_state],
-            outputs=[gallery, url_status, version_selector, model_info, trigger_html, open_link_html, selected_url, search_data],
+            outputs=[gallery, url_status, version_selector, model_header_html, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def do_search(q, mt, srt, levels, api_key, creator, per, sd):
@@ -1227,27 +1352,29 @@ def make_panel_components(i, api_key_state):
             return (
                 build_gallery_data(all_loaded if creator_active else visible_items),
                 gr.update(value=page_lbl, visible=True),
-                EMPTY_DETAIL,
+                "",
+                gr.update(visible=False, interactive=False, choices=[], value=None),
                 build_trigger_words_html([]),
-                gr.update(visible=False, choices=[], value=None),
+                EMPTY_DETAIL,
+                "",
                 new_sd,
             )
 
         search_btn.click(
             fn=do_search,
             inputs=[query, model_type, sort, content_levels, api_key_state, creator_filter, period, search_data],
-            outputs=[gallery, page_info, model_info, trigger_html, version_selector, search_data],
+            outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
         query.submit(
             fn=do_search,
             inputs=[query, model_type, sort, content_levels, api_key_state, creator_filter, period, search_data],
-            outputs=[gallery, page_info, model_info, trigger_html, version_selector, search_data],
+            outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def do_next(sd, api_key):
             next_url = sd.get("next_page", "")
             if not next_url:
-                return build_gallery_data(sd.get("items", [])), gr.update(value="No more pages.", visible=True), EMPTY_DETAIL, build_trigger_words_html([]), gr.update(visible=False, choices=[], value=None), sd
+                return build_gallery_data(sd.get("items", [])), gr.update(value="No more pages.", visible=True), "", gr.update(visible=False, interactive=False, choices=[], value=None), build_trigger_words_html([]), EMPTY_DETAIL, "", sd
 
             headers = _get_headers(api_key)
             items, meta, next2 = _fetch_url(next_url, headers)
@@ -1258,18 +1385,18 @@ def make_panel_components(i, api_key_state):
 
             new_sd = dict(sd)
             new_sd.update({"items": visible_items, "metadata": meta, "all_items": all_items, "next_page": next2, "selected_index": 0})
-            return build_gallery_data(visible_items), gr.update(value=page_lbl, visible=True), EMPTY_DETAIL, build_trigger_words_html([]), gr.update(visible=False, choices=[], value=None), new_sd
+            return build_gallery_data(visible_items), gr.update(value=page_lbl, visible=True), "", gr.update(visible=False, interactive=False, choices=[], value=None), build_trigger_words_html([]), EMPTY_DETAIL, "", new_sd
 
         next_btn.click(
             fn=do_next,
             inputs=[search_data, api_key_state],
-            outputs=[gallery, page_info, model_info, trigger_html, version_selector, search_data],
+            outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def do_prev(sd, api_key):
             first_url = sd.get("first_page", "")
             if not first_url:
-                return build_gallery_data(sd.get("items", [])), gr.update(value="Already on first page.", visible=True), EMPTY_DETAIL, build_trigger_words_html([]), gr.update(visible=False, choices=[], value=None), sd
+                return build_gallery_data(sd.get("items", [])), gr.update(value="Already on first page.", visible=True), "", gr.update(visible=False, interactive=False, choices=[], value=None), build_trigger_words_html([]), EMPTY_DETAIL, "", sd
 
             headers = _get_headers(api_key)
             items, meta, next2 = _fetch_url(first_url, headers)
@@ -1279,12 +1406,12 @@ def make_panel_components(i, api_key_state):
 
             new_sd = dict(sd)
             new_sd.update({"items": visible_items, "metadata": meta, "all_items": visible_items, "next_page": next2, "selected_index": 0})
-            return build_gallery_data(visible_items), gr.update(value=page_lbl, visible=True), EMPTY_DETAIL, build_trigger_words_html([]), gr.update(visible=False, choices=[], value=None), new_sd
+            return build_gallery_data(visible_items), gr.update(value=page_lbl, visible=True), "", gr.update(visible=False, interactive=False, choices=[], value=None), build_trigger_words_html([]), EMPTY_DETAIL, "", new_sd
 
         prev_btn.click(
             fn=do_prev,
             inputs=[search_data, api_key_state],
-            outputs=[gallery, page_info, model_info, trigger_html, version_selector, search_data],
+            outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def do_refine(q, sd, api_key):
@@ -1308,12 +1435,12 @@ def make_panel_components(i, api_key_state):
 
             page_lbl = f"{len(matched)} matches from {len(all_items)} cached"
 
-            return build_gallery_data(matched), gr.update(value=page_lbl, visible=True), EMPTY_DETAIL, build_trigger_words_html([]), gr.update(visible=False, choices=[], value=None), sd2
+            return build_gallery_data(matched), gr.update(value=page_lbl, visible=True), "", gr.update(visible=False, interactive=False, choices=[], value=None), build_trigger_words_html([]), EMPTY_DETAIL, "", sd2
 
         refine_btn.click(
             fn=do_refine,
             inputs=[query, search_data, api_key_state],
-            outputs=[gallery, page_info, model_info, trigger_html, version_selector, search_data],
+            outputs=[gallery, page_info, model_header_html, version_selector, trigger_html, model_body_html, selected_url, search_data],
         )
 
         def clear_tab():
