@@ -406,11 +406,14 @@ def _has_meaningful_html(html: str) -> bool:
     return bool(txt.strip())
 
 
-def build_open_link_html(model):
+def build_open_link_html(model, version=None):
     mid = model.get("id", "")
     if not mid:
         return ""
-    url = f"https://civitai.com/models/{mid}"
+    vid = ""
+    if version:
+        vid = version.get("id") or ""
+    url = f"https://civitai.com/models/{mid}" + (f"?modelVersionId={vid}" if vid else "")
     return (
         "<div style='margin:6px 0 10px'>"
         f"<a href='{url}' target='_blank' "
@@ -922,7 +925,7 @@ def make_panel_components(i, api_key_state):
             return (
                 get_model_detail_html(model, sel_version),
                 build_trigger_words_html(get_trigger_words_for_version(sel_version)),
-                build_open_link_html(model),
+                build_open_link_html(model, sel_version),
                 sel_url,
                 gr.update(choices=choices, value=val, visible=True, interactive=len(choices) > 1),
                 sd2,
@@ -938,7 +941,7 @@ def make_panel_components(i, api_key_state):
             items = sd.get("items", [])
             idx = sd.get("selected_index", 0)
             if not items or idx >= len(items):
-                return [], EMPTY_DETAIL, build_trigger_words_html([]), "", sd
+                return [], EMPTY_DETAIL, build_trigger_words_html([]), "", "", sd
 
             model = items[idx]
             v = get_version_by_choice(model, vc)
@@ -956,6 +959,7 @@ def make_panel_components(i, api_key_state):
                 build_gallery_data(items2),
                 get_model_detail_html(m2, v),
                 build_trigger_words_html(get_trigger_words_for_version(v)),
+                build_open_link_html(m2, v),
                 sel_url,
                 sd2,
             )
@@ -963,7 +967,7 @@ def make_panel_components(i, api_key_state):
         version_selector.change(
             fn=on_version_change,
             inputs=[version_selector, search_data],
-            outputs=[gallery, model_info, trigger_html, selected_url, search_data],
+            outputs=[gallery, model_info, trigger_html, open_link_html, selected_url, search_data],
         )
 
         def load_from_url(url, api_key):
@@ -1020,7 +1024,7 @@ def make_panel_components(i, api_key_state):
                 gr.update(choices=ver_choices, value=ver_val, visible=True, interactive=len(ver_choices) > 1),
                 get_model_detail_html(m2, selected_ver),
                 build_trigger_words_html(get_trigger_words_for_version(selected_ver)),
-                build_open_link_html(m2),
+                build_open_link_html(m2, selected_ver),
                 sel_url,
                 new_sd,
             )
