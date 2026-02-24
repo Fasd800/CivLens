@@ -1643,7 +1643,7 @@ CSS = _load_css()
 def on_ui_tabs():
     settings = load_settings()
 
-    with gr.Blocks(analytics_enabled=False, css=CSS) as civitai_tab:
+    with gr.Blocks(analytics_enabled=False, css=CSS, elem_id="civitai-ext") as civitai_tab:
         api_key_state = gr.State(settings.get("api_key", ""))
 
         tab_count = gr.State(1)
