@@ -7,6 +7,8 @@ import json
 import re
 import threading
 import time
+import html
+from urllib.parse import urlparse
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
@@ -60,7 +62,43 @@ _SESSION.mount("http://", HTTPAdapter(max_retries=_RETRY))
 _DOWNLOAD_JOBS = {}
 _DOWNLOAD_JOBS_LOCK = threading.Lock()
 
+def _is_allowed_url(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host or not host.endswith("civitai.com"):
+        return False
+    if parsed.username or parsed.password:
+        return False
+    return True
+
+def _escape_html(text) -> str:
+    return html.escape(str(text if text is not None else ""), quote=True)
+
+def _sanitize_filename(name: str) -> str:
+    clean = os.path.basename(str(name or ""))
+    clean = clean.replace("\x00", "")
+    clean = re.sub(r"[<>:\"/\\\\|?*\n\r\t]+", "_", clean).strip()
+    if not clean or clean in {".", ".."}:
+        return "model.safetensors"
+    return clean[:180]
+
+def _safe_join(base: str, name: str) -> str:
+    base_abs = os.path.abspath(base)
+    dest = os.path.abspath(os.path.join(base_abs, name))
+    if os.path.commonpath([base_abs, dest]) != base_abs:
+        return os.path.join(base_abs, os.path.basename(name))
+    return dest
+
 def _safe_get(url, headers=None, params=None, timeout=15, stream=False):
+    if not _is_allowed_url(url):
+        raise ValueError("Blocked URL")
     global _LAST_REQ_TS
     now = time.time()
     wait = _RATE_MIN_INTERVAL - (now - _LAST_REQ_TS)
@@ -412,7 +450,7 @@ def build_trigger_words_html(words):
 
     pills = []
     for w in words:
-        esc = (w or "").replace("'", "\\'").replace('"', "&quot;")
+        esc = _escape_html(w)
         pills.append(
             "<span "
             "data-word=\"" + esc + "\" "
@@ -435,7 +473,7 @@ def build_trigger_words_html(words):
             "user-select:none;transition:all 0.2s ease' "
             "onmouseover=\"this.style.background='#2d1f5e';this.style.borderColor='#a78bfa'\" "
             "onmouseout=\"this.style.background='#1a2e1a';this.style.borderColor='#7c3aed'\""
-            f">{w}</span>"
+            f">{esc}</span>"
         )
 
     return (
@@ -456,6 +494,8 @@ def sanitize_description_html(raw: str) -> str:
     safe = re.sub(r"on\\w+\\s*=\\s*\"[^\"]*\"", "", safe, flags=re.IGNORECASE)
     safe = re.sub(r"on\\w+\\s*=\\s*'[^']*'", "", safe, flags=re.IGNORECASE)
     safe = re.sub(r"on\\w+\\s*=\\s*[^\\s>]+", "", safe, flags=re.IGNORECASE)
+    safe = re.sub(r"(?i)\\b(href|src)\\s*=\\s*([\"'])\\s*javascript:[^\"']*\\2", r"\\1=\"#\"", safe)
+    safe = re.sub(r"(?i)\\b(href|src)\\s*=\\s*([\"'])\\s*data:[^\"']*\\2", r"\\1=\"#\"", safe)
     return safe.strip()
 
 
@@ -494,9 +534,11 @@ def get_model_header_html(model, version=None):
     downloads = stats.get("downloadCount", 0)
     rating = float(stats.get("rating", 0) or 0)
     ratingcnt = int(stats.get("ratingCount", 0) or 0)
-    creator = (model.get("creator") or {}).get("username", "NA")
-    modeltype = model.get("type", "Other")
-    typecolor = TYPE_COLORS.get(modeltype, "#374151")
+    creator = _escape_html((model.get("creator") or {}).get("username", "NA"))
+    modeltype_raw = model.get("type", "Other")
+    modeltype = _escape_html(modeltype_raw)
+    typecolor = TYPE_COLORS.get(modeltype_raw, "#374151")
+    model_name = _escape_html(model.get("name", "NA"))
 
     stars = ""
     if ratingcnt > 0:
@@ -512,7 +554,7 @@ def get_model_header_html(model, version=None):
         "<div style='padding:12px 14px;font-family:sans-serif;color:#e0e0e0'>"
         "<div style='margin-bottom:10px'>"
         "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px'>"
-        f"<h3 style='margin:0;color:#fff;font-size:16px;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{model.get('name','NA')}</h3>"
+        f"<h3 style='margin:0;color:#fff;font-size:16px;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{model_name}</h3>"
         "</div>"
         "<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap'>"
         f"<span style='background:{typecolor};color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0'>{modeltype}</span>"
@@ -690,16 +732,18 @@ def get_model_detail_html(model, version=None):
     downloads = stats.get("downloadCount", 0)
     rating = float(stats.get("rating", 0) or 0)
     ratingcnt = int(stats.get("ratingCount", 0) or 0)
-    creator = (model.get("creator") or {}).get("username", "NA")
-    modeltype = model.get("type", "Other")
-    typecolor = TYPE_COLORS.get(modeltype, "#374151")
+    creator = _escape_html((model.get("creator") or {}).get("username", "NA"))
+    modeltype_raw = model.get("type", "Other")
+    modeltype = _escape_html(modeltype_raw)
+    typecolor = TYPE_COLORS.get(modeltype_raw, "#374151")
     tags = model.get("tags", [])[:6]
+    model_name = _escape_html(model.get("name", "NA"))
 
     tags_html = ""
     if tags:
         tags_html = "<div style='margin-top:8px'>" + "".join(
             f"<span style='display:inline-block;padding:2px 8px;margin:2px;background:#1c1c2e;border:1px solid #374151;"
-            f"border-radius:12px;color:#9ca3af;font-size:10px'>{t}</span>"
+            f"border-radius:12px;color:#9ca3af;font-size:10px'>{_escape_html(t)}</span>"
             for t in tags
         ) + "</div>"
 
@@ -715,7 +759,7 @@ def get_model_detail_html(model, version=None):
         "<div style='padding:12px 14px;font-family:sans-serif;color:#e0e0e0'>"
         "<div style='margin-bottom:10px'>"
         "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px'>"
-        f"<h3 style='margin:0;color:#fff;font-size:16px;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{model.get('name','NA')}</h3>"
+        f"<h3 style='margin:0;color:#fff;font-size:16px;line-height:1.3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{model_name}</h3>"
         f"<span style='background:{typecolor};color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0'>{modeltype}</span>"
         "</div>"
         "<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap'>"
@@ -802,7 +846,7 @@ def _pick_download_url_and_name(version: dict):
     if not files:
         return None, None
     primary = next((f for f in files if f.get("primary")), files[0])
-    dl = primary.get("downloadUrl")
+    dl = (primary.get("downloadUrl") or "").strip() or None
     name = primary.get("name")
     return dl, name
 
@@ -868,6 +912,8 @@ def _cancel_sleep(seconds, cancel_event):
 def _download_get(url, headers, cancel_event, stream=False, timeout=(10, 5)):
     if cancel_event and cancel_event.is_set():
         raise RuntimeError("Cancelled")
+    if not _is_allowed_url(url):
+        raise ValueError("Blocked URL")
     r = requests.get(url, headers=headers or {}, timeout=timeout, stream=stream)
     if r.status_code == 429:
         ra = r.headers.get("Retry-After")
@@ -921,8 +967,9 @@ def _download_worker(panel_id, model, version, api_key):
     dl_url, filename = _pick_download_url_and_name(version)
     if not filename:
         filename = f"{model.get('id','model')}_{ver_id or 'latest'}.safetensors"
+    filename = _sanitize_filename(filename)
 
-    dest = os.path.join(save_dir, filename)
+    dest = _safe_join(save_dir, filename)
     if os.path.exists(dest):
         existing = os.path.getsize(dest)
         _update_download_job(panel_id, filename=filename, done=existing, total=existing, percent=100, status=f"Already exists: {filename}", finished=True)
@@ -984,7 +1031,8 @@ def _download_worker(panel_id, model, version, api_key):
                     if img_ext not in {".png", ".jpg", ".jpeg"}:
                         img_ext = ".jpg"
                     img_name = f"{os.path.splitext(filename)[0]}{img_ext}"
-                    img_dest = os.path.join(save_dir, img_name)
+                    img_name = _sanitize_filename(img_name)
+                    img_dest = _safe_join(save_dir, img_name)
                     if not os.path.exists(img_dest):
                         with _download_get(img_url, headers=headers, cancel_event=cancel_event, stream=True, timeout=(10, 5)) as ir:
                             with open(img_dest, "wb") as outf:
@@ -1036,6 +1084,7 @@ def start_download(search_data, version_choice, api_key, panel_id):
         dl_url, filename = _pick_download_url_and_name(version)
         if not filename:
             filename = f"{model.get('id','model')}_{ver_id or 'latest'}.safetensors"
+        filename = _sanitize_filename(filename)
 
         job = {
             "filename": filename,
@@ -1110,27 +1159,25 @@ def make_panel_components(i, api_key_state):
                     value="AllTime",
                     scale=2,
                 )
+                base_model = gr.Dropdown(
+                    label="Base model",
+                    choices=["Any", "Pony", "Illustrious", "SDXL", "SD 1.5", "SD 2.1", "Flux", "Z image Base", "Z Image turbo"],
+                    value="Any",
+                    scale=2,
+                )
                 creator_filter = gr.Dropdown(
                     label="Creator",
                     choices=creator_dropdown_choices(),
                     value="— All —",
                     scale=2,
                 )
-                content_levels = gr.CheckboxGroup(
-                    label="",
-                    show_label=False,
-                    choices=["PG", "PG-13", "R", "X", "XXX"],
-                    value=["PG", "PG-13", "R", "X", "XXX"],
-                    scale=3,
-                    elem_classes=["content-center"],
-                )
 
             with gr.Row():
-                base_model = gr.Dropdown(
-                    label="Base model",
-                    choices=["Any", "Pony", "Illustrious", "SDXL", "SD 1.5", "SD 2.1", "Flux", "Z image Base", "Z Image turbo"],
-                    value="Any",
-                    scale=2,
+                tag_filter = gr.Textbox(
+                    label="Tags",
+                    placeholder="Comma separated tags (e.g. character, clothing, cyberpunk)",
+                    lines=1,
+                    scale=5,
                 )
                 tag_categories = gr.CheckboxGroup(
                     label="Tag categories",
@@ -1138,11 +1185,11 @@ def make_panel_components(i, api_key_state):
                     value=[],
                     scale=3,
                 )
-                tag_filter = gr.Textbox(
-                    label="Tags",
-                    placeholder="Comma separated tags (e.g. character, clothing, cyberpunk)",
-                    lines=1,
-                    scale=5,
+                content_levels = gr.CheckboxGroup(
+                    label="Content rating",
+                    choices=["PG", "PG-13", "R", "X", "XXX"],
+                    value=["PG", "PG-13", "R", "X", "XXX"],
+                    scale=3,
                 )
 
             with gr.Row():
