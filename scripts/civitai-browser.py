@@ -287,7 +287,7 @@ def _apply_extra_filters(items, tag_categories, tag_filter_text, base_model_valu
 def build_search_url(query, model_type, sort, content_levels, api_key, creator_filter, period="AllTime", use_tag=False):
     include_nsfw = any(lvl in content_levels for lvl in ["PG-13", "R", "X", "XXX"])
     params = {
-        "limit": 20,
+        "limit": 100,
         "sort": sort,
         "period": period,
         "nsfw": str(include_nsfw).lower(),
