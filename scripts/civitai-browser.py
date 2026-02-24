@@ -57,7 +57,8 @@ _SESSION = requests.Session()
 _RETRY = Retry(total=2, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504], allowed_methods=frozenset(["GET"]))
 _SESSION.mount("https://", HTTPAdapter(max_retries=_RETRY))
 _SESSION.mount("http://", HTTPAdapter(max_retries=_RETRY))
-DOWNLOAD_CANCEL_REQUESTED = False
+_DOWNLOAD_JOBS = {}
+_DOWNLOAD_JOBS_LOCK = threading.Lock()
 
 def _safe_get(url, headers=None, params=None, timeout=15, stream=False):
     global _LAST_REQ_TS
@@ -649,19 +650,83 @@ def _render_progress_html(percent, done, total, filename):
         "</div>"
     )
 
-def download_model(search_data, version_choice, api_key):
-    global DOWNLOAD_CANCEL_REQUESTED
-    items = search_data.get("items", [])
-    idx = search_data.get("selected_index", 0)
-    if not items or idx >= len(items):
-        yield "", "No model selected."
-        return
+def _download_job_key(panel_id):
+    return str(panel_id)
 
-    model = items[idx]
-    version = get_version_by_choice(model, version_choice)
-    if not version:
-        yield "", "No version found."
+
+def _download_job_snapshot(panel_id):
+    key = _download_job_key(panel_id)
+    with _DOWNLOAD_JOBS_LOCK:
+        job = _DOWNLOAD_JOBS.get(key)
+        return dict(job) if job else None
+
+
+def _update_download_job(panel_id, **updates):
+    key = _download_job_key(panel_id)
+    with _DOWNLOAD_JOBS_LOCK:
+        job = _DOWNLOAD_JOBS.get(key)
+        if not job:
+            return
+        job.update(updates)
+
+
+def _cancel_sleep(seconds, cancel_event):
+    if not seconds:
         return
+    end = time.time() + float(seconds)
+    while time.time() < end:
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("Cancelled")
+        time.sleep(min(0.2, end - time.time()))
+
+
+def _download_get(url, headers, cancel_event, stream=False, timeout=(10, 5)):
+    if cancel_event and cancel_event.is_set():
+        raise RuntimeError("Cancelled")
+    r = requests.get(url, headers=headers or {}, timeout=timeout, stream=stream)
+    if r.status_code == 429:
+        ra = r.headers.get("Retry-After")
+        try:
+            delay = float(ra)
+        except Exception:
+            delay = 2.0
+        _cancel_sleep(min(delay, 5.0), cancel_event)
+        if cancel_event and cancel_event.is_set():
+            raise RuntimeError("Cancelled")
+        r = requests.get(url, headers=headers or {}, timeout=timeout, stream=stream)
+    r.raise_for_status()
+    return r
+
+
+def poll_download(panel_id):
+    job = _download_job_snapshot(panel_id)
+    if not job:
+        return gr.update(), gr.update()
+
+    filename = job.get("filename") or ""
+    status = job.get("status", "")
+    if filename:
+        progress_html = _render_progress_html(job.get("percent", 0), job.get("done", 0), job.get("total", 0), filename)
+    else:
+        progress_html = ""
+
+    key = _download_job_key(panel_id)
+    with _DOWNLOAD_JOBS_LOCK:
+        live = _DOWNLOAD_JOBS.get(key) or {}
+        last_progress = live.get("ui_last_progress", None)
+        last_status = live.get("ui_last_status", None)
+        if last_progress == progress_html and last_status == status:
+            return gr.update(), gr.update()
+        live["ui_last_progress"] = progress_html
+        live["ui_last_status"] = status
+        _DOWNLOAD_JOBS[key] = live
+
+    return gr.update(value=progress_html), gr.update(value=status)
+
+
+def _download_worker(panel_id, model, version, api_key):
+    job = _download_job_snapshot(panel_id) or {}
+    cancel_event = job.get("cancel_event")
 
     model_type = model.get("type", "Other")
     save_dir = get_model_dir(model_type)
@@ -675,32 +740,29 @@ def download_model(search_data, version_choice, api_key):
     dest = os.path.join(save_dir, filename)
     if os.path.exists(dest):
         existing = os.path.getsize(dest)
-        yield _render_progress_html(100, existing, existing, filename), f"Already exists: {filename}"
+        _update_download_job(panel_id, filename=filename, done=existing, total=existing, percent=100, status=f"Already exists: {filename}", finished=True)
         return
 
     if not dl_url and ver_id:
         dl_url = f"{DOWNLOAD_URL}/{ver_id}"
     if not dl_url:
-        yield "", "No download URL found for this version."
+        _update_download_job(panel_id, filename=filename, status="No download URL found for this version.", finished=True)
         return
 
     headers = _get_headers(api_key)
 
     try:
-        DOWNLOAD_CANCEL_REQUESTED = False
-        with _safe_get(dl_url, headers=headers, stream=True, timeout=60) as r:
+        _update_download_job(panel_id, filename=filename, status=f"Starting download: {filename}", done=0, total=0, percent=0)
+        with _download_get(dl_url, headers=headers, cancel_event=cancel_event, stream=True, timeout=(10, 5)) as r:
             total = int(r.headers.get("Content-Length", 0))
             done = 0
-            yield _render_progress_html(0, 0, total, filename), f"Starting download: {filename}"
+            _update_download_job(panel_id, total=total, done=0, percent=0)
+
+            last_pct = -1
+            last_ui_ts = 0.0
             with open(dest, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 20):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    done += len(chunk)
-                    pct = (done / total) * 100.0 if total > 0 else 0
-                    yield _render_progress_html(pct, done, total, filename), f"Downloading: {filename} ({done/1024/1024:.1f} MB)"
-                    if DOWNLOAD_CANCEL_REQUESTED:
+                    if cancel_event and cancel_event.is_set():
                         try:
                             f.close()
                         except Exception:
@@ -710,8 +772,20 @@ def download_model(search_data, version_choice, api_key):
                                 os.remove(dest)
                         except Exception:
                             pass
-                        yield "", "Download cancelled."
+                        _update_download_job(panel_id, status="Download cancelled.", finished=True, percent=0, done=0, total=0)
                         return
+
+                    if not chunk:
+                        continue
+
+                    f.write(chunk)
+                    done += len(chunk)
+                    pct = int((done / total) * 100.0) if total > 0 else 0
+                    now = time.time()
+                    if pct != last_pct or (now - last_ui_ts) > 0.8:
+                        _update_download_job(panel_id, done=done, total=total, percent=pct, status=f"Downloading: {filename} ({done/1024/1024:.1f} MB)")
+                        last_pct = pct
+                        last_ui_ts = now
 
         size_mb = done / 1024 / 1024 if done else 0
         total_mb = total / 1024 / 1024 if total else 0
@@ -727,9 +801,11 @@ def download_model(search_data, version_choice, api_key):
                     img_name = f"{os.path.splitext(filename)[0]}{img_ext}"
                     img_dest = os.path.join(save_dir, img_name)
                     if not os.path.exists(img_dest):
-                        with _safe_get(img_url, headers=headers, stream=True, timeout=30) as ir:
+                        with _download_get(img_url, headers=headers, cancel_event=cancel_event, stream=True, timeout=(10, 5)) as ir:
                             with open(img_dest, "wb") as outf:
                                 for chunk in ir.iter_content(chunk_size=1 << 20):
+                                    if cancel_event and cancel_event.is_set():
+                                        raise RuntimeError("Cancelled")
                                     if chunk:
                                         outf.write(chunk)
                         msg += f"\nPreview saved: {img_name}"
@@ -738,7 +814,7 @@ def download_model(search_data, version_choice, api_key):
                 except Exception as ie:
                     msg += f"\nPreview download failed: {ie}"
 
-        yield _render_progress_html(100, done, total, filename), msg
+        _update_download_job(panel_id, done=done, total=total, percent=100, status=msg, finished=True)
         return
 
     except Exception as e:
@@ -747,13 +823,60 @@ def download_model(search_data, version_choice, api_key):
                 os.remove(dest)
         except Exception:
             pass
-        yield "", f"Download failed: {e}"
+        if str(e) == "Cancelled":
+            _update_download_job(panel_id, status="Download cancelled.", finished=True)
+        else:
+            _update_download_job(panel_id, status=f"Download failed: {e}", finished=True)
         return
 
 
-def stop_download():
-    global DOWNLOAD_CANCEL_REQUESTED
-    DOWNLOAD_CANCEL_REQUESTED = True
+def start_download(search_data, version_choice, api_key, panel_id):
+    items = search_data.get("items", [])
+    idx = search_data.get("selected_index", 0)
+    if not items or idx >= len(items):
+        return "", "No model selected."
+
+    model = items[idx]
+    version = get_version_by_choice(model, version_choice)
+    if not version:
+        return "", "No version found."
+
+    key = _download_job_key(panel_id)
+    with _DOWNLOAD_JOBS_LOCK:
+        existing = _DOWNLOAD_JOBS.get(key)
+        if existing and existing.get("thread") and existing["thread"].is_alive():
+            return poll_download(panel_id)
+
+        ver_id = version.get("id")
+        dl_url, filename = _pick_download_url_and_name(version)
+        if not filename:
+            filename = f"{model.get('id','model')}_{ver_id or 'latest'}.safetensors"
+
+        job = {
+            "filename": filename,
+            "done": 0,
+            "total": 0,
+            "percent": 0,
+            "status": f"Starting download: {filename}",
+            "finished": False,
+            "cancel_event": threading.Event(),
+        }
+        worker = threading.Thread(target=_download_worker, args=(panel_id, model, version, api_key), daemon=True)
+        job["thread"] = worker
+        _DOWNLOAD_JOBS[key] = job
+        worker.start()
+
+    return _render_progress_html(0, 0, 0, filename), f"Starting download: {filename}"
+
+
+def stop_download(panel_id):
+    key = _download_job_key(panel_id)
+    with _DOWNLOAD_JOBS_LOCK:
+        job = _DOWNLOAD_JOBS.get(key)
+        if not job or job.get("finished") or not job.get("thread") or not job["thread"].is_alive():
+            return "", "No active download."
+        job["cancel_event"].set()
+        job["status"] = "Stopping current download..."
     return "", "Stopping current download..."
 
 
@@ -883,8 +1006,10 @@ def make_panel_components(i, api_key_state):
                     lines=3,
                     placeholder="Download status appears here.",
                 )
+                dl_poll_timer = gr.Timer(1.0)
 
         # State
+        panel_id_state = gr.State(i)
         search_data = gr.State(
             {
                 "items": [],
@@ -1213,13 +1338,18 @@ def make_panel_components(i, api_key_state):
             )
 
         download_btn.click(
-            fn=download_model,
-            inputs=[search_data, version_selector, api_key_state],
+            fn=start_download,
+            inputs=[search_data, version_selector, api_key_state, panel_id_state],
             outputs=[dl_progress_html, dl_status],
         )
         stop_btn.click(
             fn=stop_download,
-            inputs=[],
+            inputs=[panel_id_state],
+            outputs=[dl_progress_html, dl_status],
+        )
+        dl_poll_timer.tick(
+            fn=poll_download,
+            inputs=[panel_id_state],
             outputs=[dl_progress_html, dl_status],
         )
 
