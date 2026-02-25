@@ -320,6 +320,18 @@ def _normalize_content_level(value):
         return "XXX"
     if isinstance(value, str):
         raw = value.strip().upper()
+        if raw.isdigit():
+            idx = int(raw)
+            if idx == 1: return "PG"
+            if idx == 2: return "PG-13"
+            if idx == 4: return "R"
+            if idx == 8: return "X"
+            if idx == 16: return "XXX"
+            if idx <= 1: return "PG"
+            if idx <= 2: return "PG-13"
+            if idx <= 4: return "R"
+            if idx <= 8: return "X"
+            return "XXX"
         raw = raw.replace("PG13", "PG-13")
         if raw in {"SAFE", "SFW", "NONE"}:
             return "PG"
@@ -537,7 +549,7 @@ def _pick_version_preview_image_url(version: dict, allowed_levels=None):
         if _normalize_content_level(img.get("nsfwLevel", img.get("nsfw", None))) not in allowed:
             continue
         url = (img.get("url", "") or "").strip()
-        if not url:
+        if not url or not url.startswith("http"):
             continue
         ext = os.path.splitext(url.split("?")[0])[1].lower()
         if ext in skip_ext:
