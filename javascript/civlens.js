@@ -32,16 +32,9 @@
     }
 
     function getActiveTabIndex() {
-        const root = getRoot();
-        const el = root.querySelector(".civlens-tabstrip .civlens-tab.active");
-        const raw = el ? el.getAttribute("data-tab-index") : null;
-        const idx = raw != null ? parseInt(raw, 10) : 0;
-        return Number.isFinite(idx) ? idx : 0;
-    }
-
-    function getTabCount() {
-        const root = getRoot();
-        return root.querySelectorAll(".civlens-tabstrip .civlens-tab").length || 1;
+        const buttons = getSearchTabButtons();
+        const idx = buttons.findIndex((btn) => btn.classList.contains("selected"));
+        return idx >= 0 ? idx : 0;
     }
 
     function getTabNav() {
@@ -65,6 +58,33 @@
         const buttons = getTabButtons();
         if (!buttons.length) return [];
         return buttons.slice(0, -1).filter(isVisible);
+    }
+
+    function getSearchTabButtons() {
+        const buttons = getTabButtons();
+        if (!buttons.length) return [];
+        return buttons.slice(0, -1);
+    }
+
+    function getTabCount() {
+        return getVisibleSearchButtons().length || 1;
+    }
+
+    function clickSearchTab(index) {
+        const buttons = getSearchTabButtons();
+        const btn = buttons[index];
+        if (!btn || !isVisible(btn)) return false;
+        btn.click();
+        return true;
+    }
+
+    function clickAddTab() {
+        const buttons = getTabButtons();
+        if (!buttons.length) return false;
+        const addBtn = buttons[buttons.length - 1];
+        if (!addBtn || addBtn.classList.contains("civlens-tab-add-disabled")) return false;
+        addBtn.click();
+        return true;
     }
 
     function updateAddTabDisabled() {
@@ -107,7 +127,7 @@
     function openUrlInTab(tabIndex, url) {
         const activeIdx = getActiveTabIndex();
         if (activeIdx !== tabIndex) {
-            clickById(`civlens-switch-btn-${tabIndex}`);
+            clickSearchTab(tabIndex);
         }
 
         setTimeout(() => {
@@ -135,9 +155,23 @@
 
                 const tabCount = getTabCount();
                 if (tabCount < MAX_TABS) {
-                    clickById("civlens-add-btn");
+                    if (!clickAddTab()) return;
                     const newIndex = tabCount;
-                    setTimeout(() => openUrlInTab(newIndex, url), 350);
+                    let attempts = 0;
+                    const waitForTab = () => {
+                        const btns = getSearchTabButtons();
+                        const btn = btns[newIndex];
+                        if (btn && isVisible(btn)) {
+                            btn.click();
+                            setTimeout(() => openUrlInTab(newIndex, url), 200);
+                            return;
+                        }
+                        attempts += 1;
+                        if (attempts < 12) {
+                            setTimeout(waitForTab, 150);
+                        }
+                    };
+                    waitForTab();
                 } else {
                     window.alert(`Maximum tabs reached (${MAX_TABS}). Close a tab to send the model to a new one.`);
                 }
