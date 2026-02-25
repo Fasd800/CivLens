@@ -1245,8 +1245,12 @@ def stop_download(panel_id):
 # =============================================================================
 # UI PANELS
 # =============================================================================
-def make_panel_components(i, api_key_state):
-    with gr.Column(visible=i == 0, elem_id=f"civlens-panel-{i}") as col:
+def make_panel_components(i, api_key_state, close_tab_fn=None):
+    with gr.TabItem(f"Search {i+1}", visible=(i==0), elem_id=f"civlens-panel-{i}") as tab_item:
+        with gr.Row(elem_classes="civlens-tab-header"):
+            gr.Markdown(f"### Search {i+1}")
+            close_btn = gr.Button("✖ Close Tab", variant="secondary", size="sm", elem_classes="civlens-close-tab-btn", scale=0, min_width=80)
+
         with gr.Tabs():
             with gr.Tab("Search Models"):
                 with gr.Group():
@@ -1835,7 +1839,10 @@ def make_panel_components(i, api_key_state):
             outputs=[dl_progress_html, dl_status, dl_poll_timer],
         )
 
-    return col, creator_filter, clear_tab, clear_targets
+    if close_tab_fn:
+        close_btn.click(fn=close_tab_fn, inputs=[panel_id_state], outputs=None)
+
+    return tab_item, creator_filter, clear_tab, clear_targets, close_btn
 
 
 # =============================================================================
@@ -1860,86 +1867,92 @@ def on_ui_tabs():
     with gr.Blocks(analytics_enabled=False, css=CSS, elem_id="civlens-ext") as civitai_tab:
         api_key_state = gr.State(settings.get("api_key", ""))
 
-        tab_count = gr.State(1)
-        active_tab = gr.State(0)
-
         with gr.Tabs():
             with gr.TabItem("CivLens"):
-                tab_bar = gr.HTML(render_tab_bar(1, 0))
+                
+                # Dynamic tab management state
+                active_tabs = gr.State([True] + [False]*(MAX_TABS-1))
+                selected_tab_idx = gr.State(0)
 
-                # Hidden-but-rendered controls (kept for JS-driven switching)
-                with gr.Row(elem_classes=["civlens-hidden-controls"]):
-                    add_btn = gr.Button("add", elem_id="civlens-add-btn", visible=False)
-                    close_btns = [
-                        gr.Button(f"close-{i}", elem_id=f"civlens-close-btn-{i}", visible=False) for i in range(MAX_TABS)
-                    ]
-                    switch_btns = [
-                        gr.Button(f"switch-{i}", elem_id=f"civlens-switch-btn-{i}", visible=False) for i in range(MAX_TABS)
-                    ]
+                with gr.Tabs(elem_id="civlens-search-tabs") as search_tabs:
+                    
+                    panel_tabs = []
+                    panel_close_btns = []
+                    
+                    for i in range(MAX_TABS):
+                        # Pass a dummy function initially, we will bind the real logic later
+                        tab_item, c_filter, clear_fn, clear_tgts, close_b = make_panel_components(i, api_key_state, None)
+                        panel_tabs.append(tab_item)
+                        panel_clear_fns.append(clear_fn)
+                        panel_clear_targets.append(clear_tgts)
+                        creator_filters.append(c_filter)
+                        panel_close_btns.append(close_b)
+                    
+                    # The "+" tab
+                    with gr.TabItem("➕", elem_id="civlens-add-tab") as add_tab:
+                        gr.Markdown("Adding new tab...")
 
-                panels = [make_panel_components(i, api_key_state) for i in range(MAX_TABS)]
-                panel_cols = [p[0] for p in panels]
-                creator_filters = [p[1] for p in panels]
-                panel_clear_fns = [p[2] for p in panels]
-                panel_clear_targets = [p[3] for p in panels]
-                clear_outputs = [c for targets in panel_clear_targets for c in targets]
+                # --- Tab Management Logic ---
 
-                def _vis_updates(count, active):
-                    return [gr.update(visible=(j < count and j == active)) for j in range(MAX_TABS)]
-
-                def _noop_clear_updates():
-                    return [gr.update() for _ in range(len(clear_outputs))]
-
-                def _clear_updates_for(idx):
+                def update_tabs_visibility(states, selected_idx):
                     updates = []
-                    for j in range(MAX_TABS):
-                        if j == idx:
-                            updates += list(panel_clear_fns[j]())
-                        else:
-                            updates += [gr.update() for _ in range(len(panel_clear_targets[j]))]
-                    return updates
+                    # Update visibility for all search tabs
+                    for i in range(MAX_TABS):
+                        updates.append(gr.update(visible=states[i]))
+                    
+                    # Update the "+" tab to be selected only if it was clicked (handled by select event)
+                    # But actually we want to select the new tab or the previous tab.
+                    # So we return gr.Tabs.update(selected=selected_idx)
+                    return updates + [gr.Tabs(selected=selected_idx)]
 
-                def do_add(count, active):
-                    if count >= MAX_TABS:
-                        return [count, active, render_tab_bar(count, active)] + _vis_updates(count, active) + _noop_clear_updates()
-                    new_count = count + 1
-                    new_active = count
-                    return [new_count, new_active, render_tab_bar(new_count, new_active)] + _vis_updates(new_count, new_active) + _noop_clear_updates()
+                def on_add_tab_select(states):
+                    # Find first inactive tab
+                    new_idx = -1
+                    for i in range(MAX_TABS):
+                        if not states[i]:
+                            new_idx = i
+                            break
+                    
+                    if new_idx != -1:
+                        states[new_idx] = True
+                        return states, new_idx, *update_tabs_visibility(states, new_idx)
+                    else:
+                        # Full, keep selected on last tab
+                        return states, MAX_TABS-1, *update_tabs_visibility(states, MAX_TABS-1)
 
-                def do_close(idx, count, active):
-                    if count <= 1:
-                        return [count, active, render_tab_bar(count, active)] + _vis_updates(count, active) + _noop_clear_updates()
-                    new_count = count - 1
-                    new_active = active
-                    if active == idx:
-                        new_active = min(idx, new_count - 1)
-                    elif active > idx:
-                        new_active = active - 1
-                    return [new_count, new_active, render_tab_bar(new_count, new_active)] + _vis_updates(new_count, new_active) + _clear_updates_for(idx)
-
-                def do_switch(idx, count, active):
-                    if idx >= count:
-                        return [count, active, render_tab_bar(count, active)] + _vis_updates(count, active) + _noop_clear_updates()
-                    return [count, idx, render_tab_bar(count, idx)] + _vis_updates(count, idx) + _noop_clear_updates()
-
-                shared_outputs = [tab_count, active_tab, tab_bar] + panel_cols + clear_outputs
-
-                add_btn.click(
-                    fn=do_add,
-                    inputs=[tab_count, active_tab],
-                    outputs=shared_outputs,
+                add_tab.select(
+                    fn=on_add_tab_select,
+                    inputs=[active_tabs],
+                    outputs=[active_tabs, selected_tab_idx] + panel_tabs + [search_tabs],
+                    show_progress=False
                 )
 
+                def on_close_tab(i, states):
+                    states[i] = False
+                    # Find new selected tab (previous visible one)
+                    new_sel = 0
+                    # Try to find visible tab before current one
+                    found_prev = False
+                    for j in range(i-1, -1, -1):
+                        if states[j]:
+                            new_sel = j
+                            found_prev = True
+                            break
+                    
+                    if not found_prev:
+                        # If no previous, find next
+                        for j in range(i+1, MAX_TABS):
+                            if states[j]:
+                                new_sel = j
+                                break
+                    
+                    return states, new_sel, *update_tabs_visibility(states, new_sel)
+
                 for i in range(MAX_TABS):
-                    close_btns[i].click(
-                        fn=lambda cnt, act, iii=i: do_close(iii, cnt, act),
-                        inputs=[tab_count, active_tab],
-                        outputs=shared_outputs,
-                    )
-                    switch_btns[i].click(
-                        fn=lambda cnt, act, iii=i: do_switch(iii, cnt, act),
-                        inputs=[tab_count, active_tab],
-                        outputs=shared_outputs,
+                    panel_close_btns[i].click(
+                        fn=lambda states, idx=i: on_close_tab(idx, states),
+                        inputs=[active_tabs],
+                        outputs=[active_tabs, selected_tab_idx] + panel_tabs + [search_tabs],
                     )
 
             with gr.TabItem("Settings"):
