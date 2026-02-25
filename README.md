@@ -8,7 +8,7 @@ An extension that lets you browse, filter, preview, and download CivitAI models 
 3. Select **Install from URL**.
 4. Paste the URL of the git repository into the provided field and click "Install".
 5. Click on "Apply and restart UI".
-6. Recommended: get your CivitAI API key from your profile settings on [civitai.com](https://civitai.com) and save it immediately in the Settings tab.
+6. Recommended: get your CivitAI API key from your profile settings on [civitai.com](https://civitai.com/user/account) and save it immediately in the Settings tab.
 
 ## Features
 - Search and filter by Type, Sort, Period, Base model, Tags, Tag categories, Content rating, and Creator
