@@ -22,142 +22,133 @@
     display: none !important;
 }
 
+/* Tabs styling */
 #civlens-ext .civlens-tabstrip {
     display: flex;
     flex-direction: row;
-    flex-wrap: nowrap;
     align-items: flex-end;
-    gap: 2px;
-    padding: 6px 8px 0 8px;
-    margin-bottom: 10px;
+    gap: 4px;
+    padding: 8px 12px 0;
+    margin-bottom: 0; /* Remove bottom margin to blend with content */
+    background: #0f172a; /* Dark background for strip */
+    border-bottom: 1px solid #334155;
     overflow-x: auto;
     overflow-y: hidden;
-    border-bottom: 1px solid #1f2937;
-    border-radius: 12px 12px 0 0;
-    background: rgba(2, 6, 23, 0.35);
     scrollbar-width: thin;
 }
 
-#civlens-ext .civlens-tabstrip > * {
-    flex: 0 0 auto;
-}
-
 #civlens-ext .civlens-tabstrip::-webkit-scrollbar {
-    height: 10px;
+    height: 6px;
 }
 
 #civlens-ext .civlens-tabstrip::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.25);
-    border-radius: 999px;
-    border: 2px solid rgba(0, 0, 0, 0);
-    background-clip: padding-box;
-}
-
-#civlens-ext .civlens-tabstrip::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.35);
-    background-clip: padding-box;
+    border-radius: 3px;
 }
 
 #civlens-ext .civlens-tab {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    height: 34px;
+    height: 36px;
     padding: 0 12px;
-    background: #0f172a;
-    border: 1px solid #1f2937;
-    border-bottom: 0;
-    border-radius: 12px 12px 0 0;
+    background: #1e293b; /* Inactive tab bg */
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0; /* Rounded top corners */
     color: #94a3b8;
     font-size: 13px;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
     position: relative;
-    transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
-    z-index: 1;
+    transition: all 0.2s ease;
+    max-width: 200px;
+    min-width: 120px;
+    flex-shrink: 0;
 }
 
 #civlens-ext .civlens-tab:hover {
-    background: #111d33;
-    border-color: #334155;
+    background: #334155; /* Hover state */
     color: #e2e8f0;
 }
 
 #civlens-ext .civlens-tab.active {
-    background: #111827;
-    border-color: #334155;
-    color: #f1f5f9;
-    box-shadow: inset 0 1px 0 rgba(96, 165, 250, 0.55);
-    z-index: 2;
+    background: #0b0f19; /* Active matches content area bg if possible, or distinct dark */
+    color: #fff;
+    border: 1px solid #334155;
+    border-bottom: 1px solid #0b0f19; /* Hide bottom border to merge with content */
+    z-index: 10;
+    margin-bottom: -1px; /* Overlap border */
+    font-weight: 500;
 }
 
+/* Icon styling */
 #civlens-ext .civlens-tab-icon {
-    display: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    opacity: 0.7;
+    width: 16px;
+    height: 16px;
+}
+
+#civlens-ext .civlens-tab.active .civlens-tab-icon {
+    opacity: 1;
+    color: #60a5fa; /* Blue accent for active icon */
 }
 
 #civlens-ext .civlens-tab-title {
-    max-width: 200px;
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
-    letter-spacing: 0.2px;
+    white-space: nowrap;
 }
 
+/* Close button */
 #civlens-ext .civlens-tab-close {
-    margin-left: 8px;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
-    background: transparent;
-    border: 1px solid transparent;
-    color: rgba(148, 163, 184, 0.85);
-    transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-    opacity: 0;
+    width: 20px;
+    height: 20px;
+    margin-left: 6px;
+    border-radius: 50%;
+    color: #94a3b8;
+    opacity: 0; /* Hidden by default */
+    transition: all 0.2s ease;
 }
 
 #civlens-ext .civlens-tab:hover .civlens-tab-close,
 #civlens-ext .civlens-tab.active .civlens-tab-close {
-    opacity: 1;
+    opacity: 1; /* Show on hover/active */
 }
 
 #civlens-ext .civlens-tab-close:hover {
-    background: rgba(239, 68, 68, 0.14);
-    border-color: rgba(248, 113, 113, 0.45);
-    color: rgba(248, 113, 113, 0.98);
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444; /* Red on hover */
 }
 
-#civlens-ext .civlens-tab-close-icon {
-    font-size: 16px;
-    line-height: 1;
-}
-
+/* Add button */
 #civlens-ext .civlens-tab-add {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
+    margin-left: 4px;
+    margin-bottom: 2px;
     background: transparent;
-    border: 1px solid #1f2937;
-    border-radius: 12px;
+    border-radius: 50%;
     color: #94a3b8;
-    font-size: 18px;
-    line-height: 1;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 #civlens-ext .civlens-tab-add:hover {
-    background: rgba(59, 130, 246, 0.14);
-    border-color: rgba(96, 165, 250, 0.55);
-    color: rgba(96, 165, 250, 0.98);
-}
-
-#civlens-ext .civlens-tab-add-icon {
-    font-size: 20px;
-    line-height: 1;
+    background: rgba(59, 130, 246, 0.2);
+    color: #3b82f6; /* Blue on hover */
 }
 
 /* Reduce vertical spacing */
