@@ -1247,9 +1247,8 @@ def stop_download(panel_id):
 # =============================================================================
 def make_panel_components(i, api_key_state, close_tab_fn=None):
     with gr.TabItem(f"Search {i+1}", visible=(i==0), elem_id=f"civlens-panel-{i}") as tab_item:
-        with gr.Row(elem_classes="civlens-tab-header"):
-            gr.Markdown(f"### Search {i+1}")
-            close_btn = gr.Button("✖ Close Tab", variant="secondary", size="sm", elem_classes="civlens-close-tab-btn", scale=0, min_width=80)
+        # Hidden close button that will be triggered by JS
+        close_btn = gr.Button("✖ Close Tab", visible=False, elem_id=f"civlens-close-btn-{i}")
 
         with gr.Tabs():
             with gr.Tab("Search Models"):
@@ -1900,12 +1899,17 @@ def on_ui_tabs():
                 def update_tabs_visibility(states, selected_idx):
                     updates = []
                     # Update visibility for all search tabs
+                    active_count = 0
                     for i in range(MAX_TABS):
-                        updates.append(gr.update(visible=states[i]))
+                        is_visible = states[i]
+                        updates.append(gr.update(visible=is_visible))
+                        if is_visible:
+                            active_count += 1
                     
-                    # Update the "+" tab to be selected only if it was clicked (handled by select event)
-                    # But actually we want to select the new tab or the previous tab.
-                    # So we return gr.Tabs.update(selected=selected_idx)
+                    # Update the "+" tab to be disabled/hidden if max tabs reached
+                    plus_visible = active_count < MAX_TABS
+                    updates.append(gr.update(visible=plus_visible))
+                    
                     return updates + [gr.Tabs(selected=selected_idx)]
 
                 def on_add_tab_select(states):
@@ -1918,15 +1922,21 @@ def on_ui_tabs():
                     
                     if new_idx != -1:
                         states[new_idx] = True
-                        return states, new_idx, *update_tabs_visibility(states, new_idx)
+                        vis_updates = update_tabs_visibility(states, new_idx)
+                        return states, new_idx, *vis_updates
                     else:
-                        # Full, keep selected on last tab
-                        return states, MAX_TABS-1, *update_tabs_visibility(states, MAX_TABS-1)
+                        # Full
+                        last_active = 0
+                        for i in range(MAX_TABS):
+                            if states[i]:
+                                last_active = i
+                        vis_updates = update_tabs_visibility(states, last_active)
+                        return states, last_active, *vis_updates
 
                 add_tab.select(
                     fn=on_add_tab_select,
                     inputs=[active_tabs],
-                    outputs=[active_tabs, selected_tab_idx] + panel_tabs + [search_tabs],
+                    outputs=[active_tabs, selected_tab_idx] + panel_tabs + [add_tab, search_tabs],
                     show_progress=False
                 )
 
@@ -1949,14 +1959,63 @@ def on_ui_tabs():
                                 new_sel = j
                                 break
                     
-                    return states, new_sel, *update_tabs_visibility(states, new_sel)
+                    vis_updates = update_tabs_visibility(states, new_sel)
+                    return states, new_sel, *vis_updates
 
                 for i in range(MAX_TABS):
                     panel_close_btns[i].click(
                         fn=lambda states, idx=i: on_close_tab(idx, states),
                         inputs=[active_tabs],
-                        outputs=[active_tabs, selected_tab_idx] + panel_tabs + [search_tabs],
+                        outputs=[active_tabs, selected_tab_idx] + panel_tabs + [add_tab, search_tabs],
                     )
+
+                # JS to handle tab close clicks - checks for clicks on the pseudo-element area
+                gr.HTML("""
+                    <script>
+                        document.addEventListener('click', function(e) {
+                            var target = e.target;
+                            
+                            // Check if we clicked on a button inside our specific tab container
+                            // Selector: #civlens-search-tabs > .tab-nav > button
+                            var container = document.getElementById('civlens-search-tabs');
+                            if (!container) return;
+                            
+                            var nav = container.querySelector('.tab-nav');
+                            if (!nav) return;
+                            
+                            // Traverse up to find button if clicked on span inside (though we aim for the button itself)
+                            var btn = target.closest('button');
+                            if (!btn || !nav.contains(btn)) return;
+                            
+                            // Check if it is the "+" tab (contains ➕ or is last child)
+                            if (btn.innerText.includes("➕")) return;
+                            
+                            // Check if click is in the rightmost area (where we render the X)
+                            var rect = btn.getBoundingClientRect();
+                            var x = e.clientX - rect.left;
+                            
+                            // If click is within the last 30px
+                            if (x > rect.width - 30) {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                
+                                // Extract the index from the text "Search N"
+                                // We use textContent to get "Search 1", "Search 2", etc.
+                                var text = btn.innerText;
+                                var match = text.match(/Search\s+(\d+)/);
+                                if (match) {
+                                    var idx = parseInt(match[1]) - 1; // 0-based index
+                                    // Click the hidden close button for this index
+                                    var closeBtnId = 'civlens-close-btn-' + idx;
+                                    var closeBtn = document.getElementById(closeBtnId);
+                                    if (closeBtn) {
+                                        closeBtn.click();
+                                    }
+                                }
+                            }
+                        }, true); // Use capture to intercept before Gradio switches tabs?
+                    </script>
+                """)
 
             with gr.TabItem("Settings"):
                 gr.Markdown("API Key")

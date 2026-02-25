@@ -22,133 +22,83 @@
     display: none !important;
 }
 
-/* Tabs styling */
-#civlens-ext .civlens-tabstrip {
-    display: flex;
-    flex-direction: row;
-    align-items: flex-end;
-    gap: 4px;
-    padding: 8px 12px 0;
-    margin-bottom: 0; /* Remove bottom margin to blend with content */
-    background: #0f172a; /* Dark background for strip */
-    border-bottom: 1px solid #334155;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
+/* Native Tab Styling Overrides */
+#civlens-search-tabs > .tab-nav {
+    border-bottom: 1px solid #334155 !important;
+    background: #0f172a !important;
+    gap: 4px !important;
+    padding: 8px 12px 0 !important;
 }
 
-#civlens-ext .civlens-tabstrip::-webkit-scrollbar {
-    height: 6px;
+#civlens-search-tabs > .tab-nav > button {
+    background: #1e293b !important;
+    border: 1px solid transparent !important;
+    border-bottom: none !important;
+    border-radius: 8px 8px 0 0 !important;
+    color: #94a3b8 !important;
+    margin-bottom: 0 !important;
+    font-size: 13px !important;
+    padding: 6px 30px 6px 12px !important; /* Extra padding on right for close button */
+    position: relative !important;
+    transition: all 0.2s ease !important;
 }
 
-#civlens-ext .civlens-tabstrip::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.25);
-    border-radius: 3px;
+#civlens-search-tabs > .tab-nav > button:hover {
+    background: #334155 !important;
+    color: #e2e8f0 !important;
 }
 
-#civlens-ext .civlens-tab {
-    display: flex;
-    align-items: center;
-    height: 36px;
-    padding: 0 12px;
-    background: #1e293b; /* Inactive tab bg */
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: 8px 8px 0 0; /* Rounded top corners */
+#civlens-search-tabs > .tab-nav > button.selected {
+    background: #0b0f19 !important;
+    color: #fff !important;
+    border: 1px solid #334155 !important;
+    border-bottom: 1px solid #0b0f19 !important;
+    z-index: 10 !important;
+    margin-bottom: -1px !important;
+    font-weight: 500 !important;
+}
+
+/* Close button via pseudo-element */
+#civlens-search-tabs > .tab-nav > button:not(:last-child)::after {
+    content: "×";
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 50%;
+    font-size: 16px;
     color: #94a3b8;
-    font-size: 13px;
     cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-    position: relative;
     transition: all 0.2s ease;
-    max-width: 200px;
-    min-width: 120px;
-    flex-shrink: 0;
+    opacity: 0;
 }
 
-#civlens-ext .civlens-tab:hover {
-    background: #334155; /* Hover state */
-    color: #e2e8f0;
-}
-
-#civlens-ext .civlens-tab.active {
-    background: #0b0f19; /* Active matches content area bg if possible, or distinct dark */
-    color: #fff;
-    border: 1px solid #334155;
-    border-bottom: 1px solid #0b0f19; /* Hide bottom border to merge with content */
-    z-index: 10;
-    margin-bottom: -1px; /* Overlap border */
-    font-weight: 500;
-}
-
-/* Icon styling */
-#civlens-ext .civlens-tab-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 8px;
-    opacity: 0.7;
-    width: 16px;
-    height: 16px;
-}
-
-#civlens-ext .civlens-tab.active .civlens-tab-icon {
+#civlens-search-tabs > .tab-nav > button:not(:last-child):hover::after,
+#civlens-search-tabs > .tab-nav > button.selected:not(:last-child)::after {
     opacity: 1;
-    color: #60a5fa; /* Blue accent for active icon */
 }
 
-#civlens-ext .civlens-tab-title {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Close button */
-#civlens-ext .civlens-tab-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    margin-left: 6px;
-    border-radius: 50%;
-    color: #94a3b8;
-    opacity: 0; /* Hidden by default */
-    transition: all 0.2s ease;
-}
-
-#civlens-ext .civlens-tab:hover .civlens-tab-close,
-#civlens-ext .civlens-tab.active .civlens-tab-close {
-    opacity: 1; /* Show on hover/active */
-}
-
-#civlens-ext .civlens-tab-close:hover {
+#civlens-search-tabs > .tab-nav > button:not(:last-child)::after:hover {
     background: rgba(239, 68, 68, 0.2);
-    color: #ef4444; /* Red on hover */
+    color: #ef4444;
 }
 
-/* Add button */
-#civlens-ext .civlens-tab-add {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    margin-left: 4px;
-    margin-bottom: 2px;
-    background: transparent;
-    border-radius: 50%;
-    color: #94a3b8;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
+/* Specific styling for the "+" tab */
+#civlens-search-tabs > .tab-nav > button:last-child {
+    padding: 6px 12px !important;
+    font-size: 16px !important;
+    color: #94a3b8 !important;
+    background: transparent !important;
+    border: none !important;
 }
 
-#civlens-ext .civlens-tab-add:hover {
-    background: rgba(59, 130, 246, 0.2);
-    color: #3b82f6; /* Blue on hover */
+#civlens-search-tabs > .tab-nav > button:last-child:hover {
+    color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.1) !important;
 }
 
 /* Reduce vertical spacing */
