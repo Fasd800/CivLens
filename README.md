@@ -56,3 +56,8 @@ An extension that lets you browse, filter, preview, and download CivitAI models 
   - gradio: 4.40.0
 - Other versions may work, but compatibility is not guaranteed.
 - If you notice that this extension interferes with other extensions or causes any issues, you can uninstall it by simply deleting the CivLens folder from the Extensions directory and reboot.
+
+## Disclaimer
+This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software.
+
+By using this extension, you acknowledge that you are solely responsible for any content you download, view, or distribute. The developer assumes no responsibility for how this tool is used or for any consequences resulting from its use.
