@@ -156,6 +156,9 @@
         attachSendToTabButtons();
         attachTabCloseButtons();
         updateAddTabDisabled();
-        observer.observe(root, { childList: true, subtree: true, attributes: true });
+        observer.observe(root, { childList: true, subtree: true });
+        setInterval(() => {
+            updateAddTabDisabled();
+        }, 500);
     });
 })();
