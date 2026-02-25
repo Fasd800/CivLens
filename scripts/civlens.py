@@ -372,47 +372,12 @@ def _model_content_level(model):
 
 def _model_matches_content_levels(model, levels):
     allowed = _allowed_content_levels(levels)
-    has_any_flag = False
-    for v in model.get("modelVersions", []) or []:
-        v_lvl = v.get("nsfwLevel", None)
-        if v_lvl is not None:
-            has_any_flag = True
-            if _normalize_content_level(v_lvl) in allowed:
-                return True
-        v_lvl = v.get("nsfw", None)
-        if v_lvl is not None:
-            has_any_flag = True
-            if _normalize_content_level(v_lvl) in allowed:
-                return True
-        for img in v.get("images", []) or []:
-            i_lvl = img.get("nsfwLevel", None)
-            if i_lvl is not None:
-                has_any_flag = True
-                if _normalize_content_level(i_lvl) in allowed:
-                    return True
-            i_lvl = img.get("nsfw", None)
-            if i_lvl is not None:
-                has_any_flag = True
-                if _normalize_content_level(i_lvl) in allowed:
-                    return True
-    m_lvl = model.get("nsfwLevel", None)
-    if m_lvl is not None:
-        has_any_flag = True
-        if _normalize_content_level(m_lvl) in allowed:
-            return True
-    m_lvl = model.get("nsfw", None)
-    if m_lvl is not None:
-        has_any_flag = True
-        if _normalize_content_level(m_lvl) in allowed:
-            return True
-    if not has_any_flag:
-        return "PG" in allowed
-    return False
+    level = _model_content_level(model)
+    return level in allowed
 
 
 def build_search_url(query, model_type, sort, content_levels, api_key, creator_filter, period="AllTime", use_tag=False):
-    creator_active = creator_filter and creator_filter != "— All —"
-    include_nsfw = creator_active or any((lvl or "").strip().upper() in ["NSFW", "PG-13", "R", "X", "XXX"] for lvl in content_levels)
+    include_nsfw = any((lvl or "").strip().upper() in ["NSFW", "PG-13", "R", "X", "XXX"] for lvl in content_levels)
     params = {
         "limit": 20,
         "sort": sort,
@@ -423,7 +388,7 @@ def build_search_url(query, model_type, sort, content_levels, api_key, creator_f
     if model_type != "All":
         params["types"] = model_type
 
-    if creator_active:
+    if creator_filter and creator_filter != "— All —":
         params["username"] = creator_filter
         params["limit"] = 100
     elif query.strip():
