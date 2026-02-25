@@ -306,17 +306,17 @@ def _normalize_content_level(value):
         return "XXX" if value else "PG"
     if isinstance(value, (int, float)):
         idx = int(value)
-        for k, v in _CONTENT_LEVEL_ORDER.items():
-            if v == idx:
-                return k
-        if idx <= 0:
-            return "PG"
-        if idx == 1:
-            return "PG-13"
-        if idx == 2:
-            return "R"
-        if idx == 3:
-            return "X"
+        # CivitAI Enum: 1=PG, 2=PG13, 4=R, 8=X, 16=XXX
+        if idx == 1: return "PG"
+        if idx == 2: return "PG-13"
+        if idx == 4: return "R"
+        if idx == 8: return "X"
+        if idx == 16: return "XXX"
+        # Fallback/Safe defaults
+        if idx <= 1: return "PG"
+        if idx <= 2: return "PG-13"
+        if idx <= 4: return "R"
+        if idx <= 8: return "X"
         return "XXX"
     if isinstance(value, str):
         raw = value.strip().upper()
