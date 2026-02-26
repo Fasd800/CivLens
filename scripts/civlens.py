@@ -1935,7 +1935,7 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
     if close_tab_fn:
         close_btn.click(fn=close_tab_fn, inputs=[panel_id_state], outputs=None)
 
-    return tab_item, creator_filter, clear_tab, clear_targets, close_btn
+    return tab_item, creator_filter, clear_tab, clear_targets, close_btn, period
 
 
 # =============================================================================
@@ -1978,19 +1978,31 @@ def on_ui_tabs():
                     panel_clear_fns = []
                     panel_clear_targets = []
                     creator_filters = []
+                    period_filters = []
                     
                     # Pre-generate all potential tabs (hidden by default)
                     for i in range(MAX_TABS):
-                        tab_item, c_filter, clear_fn, clear_tgts, close_b = make_panel_components(i, api_key_state, None)
+                        tab_item, c_filter, clear_fn, clear_tgts, close_b, period_filter = make_panel_components(i, api_key_state, None)
                         panel_tabs.append(tab_item)
                         panel_clear_fns.append(clear_fn)
                         panel_clear_targets.append(clear_tgts)
                         creator_filters.append(c_filter)
                         panel_close_btns.append(close_b)
+                        period_filters.append(period_filter)
                     
                     # The "+" tab (acts as a button)
                     with gr.TabItem("➕", elem_id="civlens-add-tab") as add_tab:
                         gr.Markdown("Adding new tab...")
+
+                def set_default_periods():
+                    return [gr.update(value="Month") for _ in period_filters]
+
+                civitai_tab.load(
+                    fn=set_default_periods,
+                    inputs=[],
+                    outputs=period_filters,
+                    show_progress=False,
+                )
 
                 # --- Tab Management Logic ---
 
