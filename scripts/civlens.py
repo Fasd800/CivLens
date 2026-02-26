@@ -1777,6 +1777,7 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
             """
             last_params = sd.get("last_api_params", {})
             levels = _normalize_content_levels_input(levels)
+            creator_active = creator and creator != "— All —"
             
             def is_nsfw(lvl_list):
                 return any((l or "").strip().upper() in ["NSFW", "PG-13", "R", "X", "XXX"] for l in _normalize_content_levels_input(lvl_list))
@@ -1807,7 +1808,6 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                 visible_items = [m for m in items if _has_thumbnail(m, levels)]
                 
                 # If searching by creator, try to load more pages upfront to allow better local filtering
-                creator_active = creator and creator != "— All —"
                 all_loaded = list(visible_items)
                 if creator_active and next_page:
                     headers = _get_headers(api_key)
