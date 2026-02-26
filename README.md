@@ -10,6 +10,14 @@ An extension that lets you browse, filter, preview, and download CivitAI models 
 5. Click on "Apply and restart UI".
 6. Recommended: get your CivitAI API key from your profile settings on [civitai.com](https://civitai.com/user/account) and save it immediately in the Settings tab.
 
+## Updating
+**Important**: Updating the extension will reset your configuration (API key and Favorite Creators).
+To avoid re-entering your data:
+1. Locate `settings.json` in the extension folder and save a copy *before* updating.
+2. Update the extension.
+3. Replace the new `settings.json` with your backup copy.
+4. Restart the UI to restore your settings.
+
 ## Features
 - Search and filter by Type, Sort, Period, Base model, Tags, Tag categories, Content rating, and Creator
 - Load by direct URL to a model/version
