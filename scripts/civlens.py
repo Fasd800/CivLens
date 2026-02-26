@@ -40,6 +40,7 @@ SETTINGS_FILE = os.path.join(EXTENSION_DIR, "settings.json")
 
 # Community link
 _DISCORD_INVITE = "https://discord.gg/bqP8qVp8XS"
+_CIVITAI_PROFILE = "https://civitai.com/user/Fasd800"
 
 # Maximum number of simultaneous search tabs allowed
 MAX_TABS = 5
@@ -944,6 +945,22 @@ def discord_banner_html():
         "</div>"
     )
 
+def civitai_banner_html():
+    return (
+        "<div style='padding:10px 14px;margin-top:8px;background:linear-gradient(135deg,#0b1220 0%,#0f172a 100%);"
+        "border:1px solid #2563eb;border-radius:10px;display:flex;align-items:center;gap:10px;"
+        "box-shadow:0 2px 8px rgba(37,99,235,0.18)'>"
+        "<div style='font-size:22px;flex-shrink:0'>⭐</div>"
+        "<div style='flex:1;min-width:0'>"
+        "<div style='color:#fff;font-size:12px;font-weight:700;margin-bottom:2px'>CivitAI Profile</div>"
+        "<div style='color:#93c5fd;font-size:11px;line-height:1.4'>Fasd800 made this extension.</div>"
+        "</div>"
+        f"<a href='{_CIVITAI_PROFILE}' target='_blank' style='flex-shrink:0;display:inline-block;padding:6px 14px;background:#2563eb;color:#fff;"
+        "font-size:12px;font-weight:700;border-radius:8px;text-decoration:none;white-space:nowrap'"
+        " onmouseover=\"this.style.background='#1d4ed8'\" onmouseout=\"this.style.background='#2563eb'\">Visit CivitAI</a>"
+        "</div>"
+    )
+
 
 def render_tab_bar(count, active):
     """
@@ -1455,6 +1472,7 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                     next_btn = gr.Button("Next ➡️", variant="secondary", scale=1, min_width=80)
 
                 gr.HTML(discord_banner_html())
+                gr.HTML(civitai_banner_html())
 
             with gr.Column(scale=2, min_width=300):
                 gr.Markdown("Model details")
