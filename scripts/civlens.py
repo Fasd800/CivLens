@@ -1348,7 +1348,7 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                             period = gr.Dropdown(
                                 label="Period",
                                 choices=["AllTime", "Year", "Month", "Week", "Day"],
-                                value="AllTime",
+                                value="Month",
                                 scale=2,
                             )
                             base_model = gr.Dropdown(
