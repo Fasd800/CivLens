@@ -19,7 +19,11 @@ An extension that lets you browse, filter, preview, and download CivitAI models 
 - Trigger words display with click-to-copy
 - Download models into the correct folders by type (Checkpoints, LoRA, ControlNet, etc.)
 - LoRA: also saves the first PNG/JPEG preview image alongside the model
-- Hardened networking and downloads (HTTPS-only + CivitAI allowlist, safe filenames)
+- **Security & Anti-DDoS Protection**:
+  - **Smart Rate Limiting**: Global lock across tabs with randomized jitter (0.1-0.6s) to prevent request spikes.
+  - **Intelligent Retry Logic**: Automatically handles rate limits (429) and server errors with exponential backoff.
+  - **Hardened Networking**: HTTPS-only enforcement, CivitAI domain allowlist (Anti-SSRF), and safe filename generation.
+  - **Content Sanitization**: Strips unsafe HTML and scripts from descriptions to prevent XSS.
 - Scoped UI/CSS/JS to avoid interfering with other extensions
 - Manage Favorite Creators in Settings
 
