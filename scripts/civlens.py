@@ -1151,7 +1151,33 @@ def _download_worker(panel_id, model, version, api_key):
     # Check if file already exists
     if os.path.exists(dest):
         existing = os.path.getsize(dest)
-        _update_download_job(panel_id, filename=filename, done=existing, total=existing, percent=100, status=f"Already exists: {filename}", finished=True)
+        msg = f"Already exists: {filename}"
+        # Attempt to fetch preview image if missing (LoRA only)
+        if (model_type or "").strip().lower() == "lora":
+            img_url = _pick_first_image_url(version)
+            if img_url:
+                try:
+                    img_ext = os.path.splitext(img_url.split("?")[0])[1].lower() or ".jpg"
+                    if img_ext not in {".png", ".jpg", ".jpeg"}:
+                        img_ext = ".jpg"
+                    img_name = f"{os.path.splitext(filename)[0]}{img_ext}"
+                    img_name = _sanitize_filename(img_name)
+                    img_dest = _safe_join(save_dir, img_name)
+                    if not os.path.exists(img_dest):
+                        headers = _get_headers(api_key)
+                        with _download_get(img_url, headers=headers, cancel_event=cancel_event, stream=True, timeout=(10, 5)) as ir:
+                            with open(img_dest, "wb") as outf:
+                                for chunk in ir.iter_content(chunk_size=1 << 20):
+                                    if cancel_event and cancel_event.is_set():
+                                        raise RuntimeError("Cancelled")
+                                    if chunk:
+                                        outf.write(chunk)
+                        msg += f"\nPreview saved: {img_name}"
+                    else:
+                        msg += f"\nPreview exists: {img_name}"
+                except Exception as ie:
+                    msg += f"\nPreview download failed: {ie}"
+        _update_download_job(panel_id, filename=filename, done=existing, total=existing, percent=100, status=msg, finished=True)
         return
 
     if not dl_url and ver_id:
