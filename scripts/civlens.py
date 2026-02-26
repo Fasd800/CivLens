@@ -520,7 +520,7 @@ def _model_matches_content_levels(model, levels):
     return level in allowed
 
 
-def build_search_url(query, model_type, sort, content_levels, api_key, creator_filter, period="AllTime", use_tag=False):
+def build_search_url(query, model_type, sort, content_levels, api_key, creator_filter, period="Month", use_tag=False):
     """Constructs the API URL for searching models."""
     include_nsfw = any((lvl or "").strip().upper() in ["NSFW", "PG-13", "R", "X", "XXX"] for lvl in content_levels)
     params = {
@@ -547,7 +547,7 @@ def build_search_url(query, model_type, sort, content_levels, api_key, creator_f
     return prepared.url
 
 
-def search_first_page(query, model_type, sort, content_levels, api_key, creator_filter, period="AllTime"):
+def search_first_page(query, model_type, sort, content_levels, api_key, creator_filter, period="Month"):
     """
     Performs the initial search request.
     If searching by text, it tries both 'query' search and 'tag' search to maximize results.
@@ -1353,7 +1353,7 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                             )
                             base_model = gr.Dropdown(
                                 label="Base model",
-                                choices=["Any", "Pony", "Illustrious", "SDXL", "SD 1.5", "SD 2.1", "Flux", "Z image Base", "Z Image turbo"],
+                                choices=["Any", "Pony", "Illustrious", "SDXL", "SD 1.5", "SD 2.1", "Flux", "Z Image Base", "Z Image turbo"],
                                 value="Any",
                                 scale=2,
                             )
