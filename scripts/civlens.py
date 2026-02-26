@@ -1419,7 +1419,7 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                     elem_id=f"civlens-gallery-{i}",
                     object_fit="contain",
                     interactive=False,
-                    allow_preview=False,
+                    allow_preview=True,
                 )
 
                 with gr.Row():

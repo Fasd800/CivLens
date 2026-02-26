@@ -1,3 +1,12 @@
+/* 
+ * Gallery Grid Customization
+ * Hides the secondary "filmstrip" thumbnails that appear below the main preview image.
+ * This keeps the UI cleaner when a model is selected.
+ */
+#civlens-ext .thumbnails {
+    display: none !important;
+}
+
 /* =============================================================================
    CivLens Extension Styles
    Defines the visual appearance for the CivLens browser UI.
