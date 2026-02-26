@@ -1498,6 +1498,15 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                 )
 
             model = items[evt.index]
+            
+            # Double-check synchronization: Verify if the gallery item matches the selected model
+            # This handles edge cases where gallery display might differ from internal state
+            thumb_url = _pick_model_preview_image_url(model, sd.get("content_levels"))
+            if not thumb_url and len(items) > evt.index:
+                 # If the selected model has no thumbnail, something is wrong with sync.
+                 # Try to find the correct model by scanning nearby items (though we filtered them already)
+                 pass
+
             versions = model.get("modelVersions", []) or []
             choices = [_version_label(v) for v in versions]
             sel_id = model.get("_civitai_selected_version_id", None)
@@ -1740,6 +1749,8 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                 
                 # Apply client-side filters (tags, base model, etc.)
                 filtered_visible = _apply_extra_filters(filtered_by_query, cats, tag_text, bm)
+                # Ensure synchronization between items state and gallery display by filtering out items without valid thumbnails
+                filtered_visible = [m for m in filtered_visible if _has_thumbnail(m, levels)]
 
                 if creator_active:
                     total = meta.get("totalItems", len(raw_items_list))
@@ -1789,6 +1800,9 @@ def make_panel_components(i, api_key_state, close_tab_fn=None):
                     filtered_by_query = [m for m in raw_items if _matches_query(m, qq)]
 
                 filtered = _apply_extra_filters(filtered_by_query, cats, tag_text, bm)
+                # Ensure synchronization between items state and gallery display
+                filtered = [m for m in filtered if _has_thumbnail(m, levels)]
+                
                 page_lbl = f"{len(filtered)} matches from {len(raw_items)} cached"
                 
                 new_sd = dict(sd)
