@@ -1238,8 +1238,13 @@ def _download_worker(panel_id, model, version, api_key):
                 os.remove(dest)
         except Exception:
             pass
-        if str(e) == "Cancelled":
+        
+        err_str = str(e)
+        if err_str == "Cancelled":
             _update_download_job(panel_id, status="Download cancelled.", finished=True)
+        elif isinstance(e, requests.exceptions.HTTPError) and e.response.status_code == 401:
+            msg = "Download failed: 401 Unauthorized. Please insert or update your CivitAI API Key in Settings. This model requires authentication."
+            _update_download_job(panel_id, status=msg, finished=True)
         else:
             _update_download_job(panel_id, status=f"Download failed: {e}", finished=True)
         return
