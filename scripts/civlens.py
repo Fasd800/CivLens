@@ -40,7 +40,7 @@ SETTINGS_FILE = os.path.join(EXTENSION_DIR, "settings.json")
 
 # Community link
 _DISCORD_INVITE = "https://discord.gg/bqP8qVp8XS"
-_CIVITAI_PROFILE = "https://civitai.com/user/Fasd800"
+_CIVITAI_PROFILE = "https://civitai.red/user/Fasd800"
 
 # Maximum number of simultaneous search tabs allowed
 MAX_TABS = 5
